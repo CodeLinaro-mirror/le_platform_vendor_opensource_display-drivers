@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -327,6 +327,15 @@ void sde_encoder_recovery_events_handler(struct drm_encoder *encoder,
  * @Return:     true if successful in updating the encoder structure
  */
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
+
+/*
+ * sde_encoder_is_cwb_disabling - check if cwb encoder disable is pending
+ * @drm_enc:    Pointer to drm encoder structure
+ * @drm_crtc:    Pointer to drm crtc structure
+ * @Return: true if cwb encoder disable is pending
+ */
+bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
+	struct drm_crtc *drm_crtc);
 
 /**
  * sde_encoder_set_clone_mode - cwb in wb phys enc is enabled.
