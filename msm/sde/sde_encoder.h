@@ -369,6 +369,12 @@ bool sde_encoder_is_primary_display(struct drm_encoder *enc);
 void sde_encoder_control_idle_pc(struct drm_encoder *enc, bool enable);
 
 /**
+ * sde_encoder_virt_reset - delay encoder virt reset
+ * @drm_enc:»       Pointer to drm encoder structure
+ */
+void sde_encoder_virt_reset(struct drm_encoder *drm_enc);
+
+/**
  * sde_encoder_in_cont_splash - checks if display is in continuous splash
  * @drm_enc:    Pointer to drm encoder structure
  * @Return:     true if display in continuous splash

@@ -3934,6 +3934,29 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	_sde_encoder_virt_enable_helper(drm_enc);
 }
 
+void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	int i = 0;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		if (sde_enc->phys_encs[i]) {
+			sde_enc->phys_encs[i]->cont_splash_enabled = false;
+			sde_enc->phys_encs[i]->cont_splash_single_flush = 0;
+			sde_enc->phys_encs[i]->connector = NULL;
+		}
+	}
+
+	sde_enc->cur_master = NULL;
+	/*
+	 * clear the cached crtc in sde_enc on use case finish, after all the
+	 * outstanding events and timers have been completed
+	 */
+	sde_enc->crtc = NULL;
+
+	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
+}
+
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -3968,7 +3991,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	SDE_EVT32(DRMID(drm_enc));
 
 	/* wait for idle */
-	sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+	if (!sde_encoder_in_clone_mode(drm_enc))
+		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
 
 	if (sde_enc->input_handler && sde_enc->input_handler_registered) {
 		input_unregister_handler(sde_enc->input_handler);
@@ -4025,22 +4049,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_STOP);
 
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		if (sde_enc->phys_encs[i]) {
-			sde_enc->phys_encs[i]->cont_splash_enabled = false;
-			sde_enc->phys_encs[i]->cont_splash_single_flush = 0;
-			sde_enc->phys_encs[i]->connector = NULL;
-		}
-	}
-
-	sde_enc->cur_master = NULL;
-	/*
-	 * clear the cached crtc in sde_enc on use case finish, after all the
-	 * outstanding events and timers have been completed
-	 */
-	sde_enc->crtc = NULL;
-
-	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
+	if (!sde_encoder_in_clone_mode(drm_enc))
+		sde_encoder_virt_reset(drm_enc);
 }
 
 void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
