@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -733,7 +734,7 @@ static int _sde_encoder_phys_cmd_wait_for_idle(
 {
 	struct sde_encoder_phys_cmd *cmd_enc =
 			to_sde_encoder_phys_cmd(phys_enc);
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 	bool recovery_events;
 	int ret;
 
@@ -777,7 +778,7 @@ static int _sde_encoder_phys_cmd_wait_for_autorefresh_done(
 {
 	struct sde_encoder_phys_cmd *cmd_enc =
 			to_sde_encoder_phys_cmd(phys_enc);
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 	int ret = 0;
 
 	if (!phys_enc) {
@@ -1408,7 +1409,7 @@ static int _sde_encoder_phys_cmd_wait_for_ctl_start(
 {
 	struct sde_encoder_phys_cmd *cmd_enc =
 			to_sde_encoder_phys_cmd(phys_enc);
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 	int ret;
 	bool frame_pending = true;
 
@@ -1522,7 +1523,7 @@ static int sde_encoder_phys_cmd_wait_for_vblank(
 {
 	int rc = 0;
 	struct sde_encoder_phys_cmd *cmd_enc;
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 
 	if (!phys_enc)
 		return -EINVAL;

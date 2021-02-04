@@ -1252,7 +1252,7 @@ static int _sde_encoder_phys_wb_wait_for_commit_done(
 	u32 event = 0;
 	u64 wb_time = 0;
 	int rc = 0;
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 
 	/* Return EWOULDBLOCK since we know the wait isn't necessary */
 	if (phys_enc->enable_state == SDE_ENC_DISABLED) {
@@ -1273,6 +1273,9 @@ static int _sde_encoder_phys_wb_wait_for_commit_done(
 		SDE_DEBUG("no output framebuffer\n");
 		_sde_encoder_phys_wb_frame_done_helper(wb_enc, false);
 	}
+
+	if (atomic_read(&phys_enc->pending_retire_fence_cnt) > 1)
+		wait_info.count_check = 1;
 
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_retire_fence_cnt;
