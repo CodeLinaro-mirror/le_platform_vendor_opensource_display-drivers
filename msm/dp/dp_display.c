@@ -348,6 +348,22 @@ static void dp_display_hdcp_deregister_stream(struct dp_display_private *dp,
 	}
 }
 
+static void dp_display_abort_hdcp(struct dp_display_private *dp,
+		bool abort)
+{
+	u32 i = HDCP_VERSION_2P2;
+	struct dp_hdcp_dev *dev = NULL;
+
+	while (i) {
+		dev = &dp->hdcp.dev[i];
+		i >>= 1;
+		if (!(dp->hdcp.source_cap & dev->ver))
+			continue;
+
+		dev->ops->abort(dev->fd, abort);
+	}
+}
+
 static void dp_display_hdcp_cb_work(struct work_struct *work)
 {
 	struct dp_display_private *dp;
@@ -777,6 +793,7 @@ static void dp_display_host_init(struct dp_display_private *dp)
 	dp->hpd->host_init(dp->hpd, &dp->catalog->hpd);
 	enable_irq(dp->irq);
 	dp->ctrl->init(dp->ctrl, flip, reset);
+	dp_display_abort_hdcp(dp, false);
 	dp->aux->init(dp->aux, dp->parser->aux_cfg);
 	dp->panel->init(dp->panel);
 	dp->core_initialized = true;
@@ -796,6 +813,7 @@ static void dp_display_host_deinit(struct dp_display_private *dp)
 	}
 
 	dp->aux->deinit(dp->aux);
+	dp_display_abort_hdcp(dp, true);
 	dp->ctrl->deinit(dp->ctrl);
 	dp->hpd->host_deinit(dp->hpd, &dp->catalog->hpd);
 	dp->power->deinit(dp->power);
@@ -2133,8 +2151,15 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	if (dp->active_stream_cnt || dp->mst.mst_active)
 		goto end;
 
-	dp->link->psm_config(dp->link, &dp->panel->link_info, true);
-	dp->debug->psm_enabled = true;
+	/*
+	 * There are monitors that can't resume from D3 mode after reboot,
+	 * and we need to skip psm_config for these monitors. This option
+	 * should only be used for non-pluggable monitors.
+	 */
+	if (!dp->parser->no_power_down) {
+		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
+		dp->debug->psm_enabled = true;
+	}
 
 	dp->ctrl->off(dp->ctrl);
 	dp_display_host_deinit(dp);
