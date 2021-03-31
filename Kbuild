@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 ifeq ($(DISPLAY_ROOT),)
-DISPLAY_ROOT=$(srctree)/techpack/display
+export DISPLAY_ROOT=$(srctree)/techpack/display
+export KERNEL_SRC=$(srctree)
+CONFIG_DRM_MSM=y
 endif
 
 LINUXINCLUDE    += \
