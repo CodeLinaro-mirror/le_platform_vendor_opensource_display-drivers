@@ -26,6 +26,7 @@
 #ifndef _DP_LINK_H_
 #define _DP_LINK_H_
 
+#include <linux/version.h>
 #include "dp_aux.h"
 
 #define DS_PORT_STATUS_CHANGED 0x200
@@ -39,12 +40,23 @@ struct drm_dp_aux;
 
 #define DP_LINK_CAP_ENHANCED_FRAMING (1 << 0)
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 struct drm_dp_link {
 	unsigned char revision;
 	unsigned int rate;
 	unsigned int num_lanes;
 	unsigned long capabilities;
 };
+#else
+#define DP_PHY_TEST_PATTERN                 0x248
+# define DP_PHY_TEST_PATTERN_SEL_MASK       0x7
+# define DP_PHY_TEST_PATTERN_NONE           0x0
+# define DP_PHY_TEST_PATTERN_D10_2          0x1
+# define DP_PHY_TEST_PATTERN_ERROR_COUNT    0x2
+# define DP_PHY_TEST_PATTERN_PRBS7          0x3
+# define DP_PHY_TEST_PATTERN_80BIT_CUSTOM   0x4
+# define DP_PHY_TEST_PATTERN_CP2520         0x5
+#endif
 
 int dp_link_probe(struct drm_dp_aux *aux, struct drm_dp_link *link);
 int dp_link_power_up(struct drm_dp_aux *aux, struct drm_dp_link *link);

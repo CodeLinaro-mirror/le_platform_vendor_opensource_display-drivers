@@ -26,7 +26,10 @@
 #include <linux/of_irq.h>
 #include <linux/dma-buf.h>
 #include <linux/memblock.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/soc/qcom/panel_event_notifier.h>
+#endif
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
 
@@ -55,7 +58,9 @@
 #include "sde_vm.h"
 
 #include <linux/qcom_scm.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-iommu-util.h>
+#endif
 #include "soc/qcom/secure_buffer.h"
 #include <linux/qtee_shmbridge.h>
 #include <linux/haven/hh_irq_lend.h>
@@ -927,15 +932,27 @@ static int _sde_kms_get_blank(struct drm_crtc_state *crtc_state,
 
 	switch (lp_mode) {
 	case SDE_MODE_DPMS_ON:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		blank = DRM_PANEL_EVENT_UNBLANK;
+#else
+		blank = DRM_PANEL_BLANK_UNBLANK;
+#endif
 		break;
 	case SDE_MODE_DPMS_LP1:
 	case SDE_MODE_DPMS_LP2:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		blank = DRM_PANEL_EVENT_BLANK_LP;
+#else
+		blank = DRM_PANEL_BLANK_LP;
+#endif
 		break;
 	case SDE_MODE_DPMS_OFF:
 	default:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		blank = DRM_PANEL_EVENT_BLANK;
+#else
+		blank = DRM_PANEL_BLANK_POWERDOWN;
+#endif
 		break;
 	}
 
@@ -945,14 +962,18 @@ static int _sde_kms_get_blank(struct drm_crtc_state *crtc_state,
 static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			bool is_pre_commit)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	struct panel_event_notification notification;
+#endif
 	struct drm_connector *connector;
 	struct drm_connector_state *old_conn_state;
 	struct drm_crtc_state *old_crtc_state;
 	struct drm_crtc *crtc;
 	struct sde_connector *c_conn;
 	int i, old_mode, new_mode, old_fps, new_fps;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	enum panel_event_notifier_tag panel_type;
+#endif
 
 	for_each_old_connector_in_state(old_state, connector,
 			old_conn_state, i) {
@@ -973,7 +994,11 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 							old_conn_state);
 		} else {
 			old_fps = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 			old_mode = DRM_PANEL_EVENT_BLANK;
+#else
+			old_mode = DRM_PANEL_BLANK_POWERDOWN;
+#endif
 		}
 
 		if ((old_mode != new_mode) || (old_fps != new_fps)) {
@@ -990,11 +1015,16 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			 */
 
 			if ((old_mode == new_mode) && (old_fps != new_fps))
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 				new_mode = DRM_PANEL_EVENT_FPS_CHANGE;
+#else
+				new_mode = DRM_PANEL_BLANK_FPS_CHANGE;
+#endif
 
 			if (!c_conn->panel)
 				continue;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 			panel_type = sde_encoder_is_primary_display(
 				connector->encoder) ?
 				PANEL_EVENT_NOTIFICATION_PRIMARY :
@@ -1007,6 +1037,7 @@ static void _sde_kms_drm_check_dpms(struct drm_atomic_state *old_state,
 			notification.notif_data.early_trigger = is_pre_commit;
 			panel_event_notification_trigger(panel_type,
 					&notification);
+#endif
 		}
 	}
 

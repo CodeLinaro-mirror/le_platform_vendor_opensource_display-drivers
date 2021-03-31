@@ -4,7 +4,10 @@
  */
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-dma-mapping.h>
+#endif
 #include <linux/dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/file.h>

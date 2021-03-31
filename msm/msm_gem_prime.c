@@ -23,10 +23,13 @@
 
 #include <drm/drm_drv.h>
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-dma-mapping.h>
+#endif
 #include <linux/dma-buf.h>
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
+#include <linux/version.h>
 
 struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj)
 {
@@ -36,7 +39,11 @@ struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj)
 	if (WARN_ON(!msm_obj->pages))  /* should have already pinned! */
 		return NULL;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	return drm_prime_pages_to_sg(obj->dev, msm_obj->pages, npages);
+#else
+	return drm_prime_pages_to_sg(msm_obj->pages, npages);
+#endif
 }
 
 void *msm_gem_prime_vmap(struct drm_gem_object *obj)

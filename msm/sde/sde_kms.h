@@ -43,6 +43,14 @@
 
 #define DRMID(x) ((x) ? (x)->base.id : -1)
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+extern unsigned int drm_debug;
+static inline bool drm_debug_enabled(u32 category)
+{
+	return unlikely(drm_debug & category);
+}
+#endif
+
 /**
  * SDE_DEBUG - macro for kms/plane/crtc/encoder/connector logs
  * @fmt: Pointer to format string
@@ -185,6 +193,21 @@ enum frame_trigger_mode_type {
 	FRAME_DONE_WAIT_SERIALIZE,
 	FRAME_DONE_WAIT_POSTED_START,
 };
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+/*
+ * @DRM_PANEL_BLANK_UNBLANK: power on
+ * @DRM_PANEL_BLANK_POWERDOWN: power off
+ * @DRM_PANEL_BLANK_LP: low power mode
+ * @DRM_PANEL_BLANK_FPS_CHANGE: fps change
+ */
+enum {
+	DRM_PANEL_BLANK_UNBLANK,
+	DRM_PANEL_BLANK_POWERDOWN,
+	DRM_PANEL_BLANK_LP,
+	DRM_PANEL_BLANK_FPS_CHANGE,
+};
+#endif
 
 /**
  * struct sde_kms_smmu_state_data: stores the smmu state and transition type

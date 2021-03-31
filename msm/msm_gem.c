@@ -16,7 +16,10 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-dma-mapping.h>
+#endif
 #include <linux/spinlock.h>
 #include <linux/shmem_fs.h>
 #include <linux/dma-buf.h>
@@ -104,7 +107,11 @@ static struct page **get_pages(struct drm_gem_object *obj)
 
 		msm_obj->pages = p;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		msm_obj->sgt = drm_prime_pages_to_sg(dev, p, npages);
+#else
+		msm_obj->sgt = drm_prime_pages_to_sg(p, npages);
+#endif
 		if (IS_ERR(msm_obj->sgt)) {
 			void *ptr = ERR_CAST(msm_obj->sgt);
 
@@ -708,7 +715,11 @@ int msm_gem_dumb_map_offset(struct drm_file *file, struct drm_device *dev,
 
 	*offset = msm_gem_mmap_offset(obj);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
 
 fail:
 	return ret;
@@ -1075,7 +1086,11 @@ int msm_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 	ret = drm_gem_handle_create(file, obj, handle);
 
 	/* drop reference from allocate - handle holds it now */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
 
 	return ret;
 }
@@ -1197,7 +1212,12 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 	return obj;
 
 fail:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
+
 	return ERR_PTR(ret);
 }
 
@@ -1315,7 +1335,11 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 	return obj;
 
 fail:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
 	return ERR_PTR(ret);
 }
 
@@ -1348,11 +1372,17 @@ static void *_msm_gem_kernel_new(struct drm_device *dev, uint32_t size,
 
 	return vaddr;
 err:
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	if (locked)
 		drm_gem_object_put_locked(obj);
 	else
 		drm_gem_object_put(obj);
-
+#else
+	if (locked)
+		drm_gem_object_put(obj);
+	else
+		drm_gem_object_put_unlocked(obj);
+#endif
 	return ERR_PTR(ret);
 
 }
@@ -1380,10 +1410,18 @@ void msm_gem_kernel_put(struct drm_gem_object *bo,
 	msm_gem_put_vaddr(bo);
 	msm_gem_unpin_iova(bo, aspace);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	if (locked)
 		drm_gem_object_put_locked(bo);
 	else
 		drm_gem_object_put(bo);
+#else
+	if (locked)
+		drm_gem_object_put(bo);
+	else
+		drm_gem_object_put_unlocked(bo);
+#endif
+
 }
 
 void msm_gem_object_set_name(struct drm_gem_object *bo, const char *fmt, ...)

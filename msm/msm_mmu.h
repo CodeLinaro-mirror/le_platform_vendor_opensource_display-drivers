@@ -19,9 +19,12 @@
 #define __MSM_MMU_H__
 
 #include <linux/iommu.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-iommu-util.h>
-#include <linux/dma-mapping.h>
 #include <linux/dma-map-ops.h>
+#endif
+#include <linux/dma-mapping.h>
 
 struct msm_mmu;
 

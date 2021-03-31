@@ -19,7 +19,10 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/qcom-dma-mapping.h>
+#endif
 #include <linux/msm_dma_iommu_mapping.h>
 #include <linux/dma-mapping.h>
 

@@ -8,6 +8,7 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
+#include <linux/version.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
@@ -3621,8 +3622,13 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
 			NULL, DRM_MODE_CONNECTOR_DSI);
+#else
+	drm_panel_init(&panel->drm_panel);
+	panel->drm_panel.dev = &panel->mipi_device.dev;
+#endif
 	panel->mipi_device.dev.of_node = of_node;
 
 	drm_panel_add(&panel->drm_panel);

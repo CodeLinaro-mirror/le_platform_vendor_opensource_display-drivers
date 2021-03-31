@@ -1038,7 +1038,11 @@ static void msm_lastclose(struct drm_device *dev)
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
 	} else if (kms && kms->client.dev) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		rc = drm_client_modeset_commit_locked(&kms->client);
+#else
+		rc = drm_client_modeset_commit_force(&kms->client);
+#endif
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 	}
@@ -1133,7 +1137,11 @@ static int msm_ioctl_gem_cpu_prep(struct drm_device *dev, void *data,
 
 	ret = msm_gem_cpu_prep(obj, args->op, &timeout);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
 
 	return ret;
 }
@@ -1151,7 +1159,11 @@ static int msm_ioctl_gem_cpu_fini(struct drm_device *dev, void *data,
 
 	ret = msm_gem_cpu_fini(obj);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	drm_gem_object_put(obj);
+#else
+	drm_gem_object_put_unlocked(obj);
+#endif
 
 	return ret;
 }

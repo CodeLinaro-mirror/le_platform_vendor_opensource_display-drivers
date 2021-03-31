@@ -55,10 +55,17 @@
 struct dp_drm_mst_fw_helper_ops {
 	int (*calc_pbn_mode)(struct dp_display_mode *dp_mode);
 	int (*find_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr, int pbn);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	int (*atomic_find_vcpi_slots)(struct drm_atomic_state *state,
 				  struct drm_dp_mst_topology_mgr *mgr,
 				  struct drm_dp_mst_port *port,
 				  int pbn, int pbn_div);
+#else
+	int (*atomic_find_vcpi_slots)(struct drm_atomic_state *state,
+				  struct drm_dp_mst_topology_mgr *mgr,
+				  struct drm_dp_mst_port *port,
+				  int pbn);
+#endif
 	bool (*allocate_vcpi)(struct drm_dp_mst_topology_mgr *mgr,
 			      struct drm_dp_mst_port *port,
 			      int pbn, int slots);
@@ -202,8 +209,13 @@ static int dp_mst_detect_port(
 			struct dp_mst_private, mst_mgr);
 	int status = connector_status_disconnected;
 
-	if (mst->mst_session_state)
+	if (mst->mst_session_state) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		status = drm_dp_mst_detect_port(connector, ctx, mgr, port);
+#else
+		status = drm_dp_mst_detect_port(connector, mgr, port);
+#endif
+	}
 
 	DP_MST_DEBUG("mst port status: %d, session state: %d\n",
 		status, mst->mst_session_state);
@@ -244,7 +256,11 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 		DSC_BPP(dp_mode->timing.comp_info.dsc_info.config)
 		: dp_mode->timing.bpp;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	pbn = drm_dp_calc_pbn_mode(dp_mode->timing.pixel_clk_khz, bpp, false);
+#else
+	pbn = drm_dp_calc_pbn_mode(dp_mode->timing.pixel_clk_khz, bpp);
+#endif
 	pbn_fp = drm_fixp_from_fraction(pbn, 1);
 
 	DP_DEBUG("before overhead pbn:%d, bpp:%d\n", pbn, bpp);
@@ -280,8 +296,12 @@ static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
 
 /* DP MST Bridge OPs */
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge)
+#endif
 {
 	struct dp_mst_bridge *bridge;
 
@@ -359,8 +379,13 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 
 	pbn = mst->mst_fw_cbs->calc_pbn_mode(mode);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	slots = mst->mst_fw_cbs->atomic_find_vcpi_slots(state,
 			&mst->mst_mgr, c_conn->mst_port, pbn, 0);
+#else
+	slots = mst->mst_fw_cbs->atomic_find_vcpi_slots(state,
+			&mst->mst_mgr, c_conn->mst_port, pbn);
+#endif
 	if (slots < 0) {
 		DP_ERR("conn:%d failed to find vcpi slots. pbn:%d, slots:%d\n",
 				connector->base.id, pbn, slots);
@@ -838,7 +863,11 @@ int dp_mst_drm_bridge_init(void *data, struct drm_encoder *encoder)
 
 	priv = dev->dev_private;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
+#else
+	rc = drm_bridge_attach(encoder, &bridge->base, NULL);
+#endif
 	if (rc) {
 		DP_ERR("failed to attach bridge, rc=%d\n", rc);
 		goto end;
@@ -1062,7 +1091,11 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	}
 
 	if (active_enc_cnt < DP_STREAM_MAX) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		full_pbn = mst_port->full_pbn;
+#else
+		full_pbn = mst_port->available_pbn;
+#endif
 		available_slots = tot_slots - slots_in_use;
 	} else {
 		DP_DEBUG("all mst streams are active\n");
@@ -1240,8 +1273,12 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 			goto end;
 		}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		drm_bridge = drm_bridge_chain_get_first_bridge(
 				old_conn_state->best_encoder);
+#else
+		drm_bridge = old_conn_state->best_encoder->bridge;
+#endif
 		if (WARN_ON(!drm_bridge)) {
 			rc = -EINVAL;
 			goto end;
@@ -1294,8 +1331,12 @@ mode_set:
 			goto end;
 		}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		drm_bridge = drm_bridge_chain_get_first_bridge(
 				new_conn_state->best_encoder);
+#else
+		drm_bridge = new_conn_state->best_encoder->bridge;
+#endif
 		if (WARN_ON(!drm_bridge)) {
 			rc = -EINVAL;
 			goto end;
@@ -1651,7 +1692,12 @@ dp_mst_add_fixed_connector(struct drm_dp_mst_topology_mgr *mgr,
 	drm_modeset_lock_all(dev);
 
 	/* clear encoder list */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	connector->possible_encoders = 0;
+#else
+	for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++)
+		connector->encoder_ids[i] = 0;
+#endif
 
 	/* re-attach encoders from first available encoders */
 	for (i = enc_idx; i < MAX_DP_MST_DRM_BRIDGES; i++)

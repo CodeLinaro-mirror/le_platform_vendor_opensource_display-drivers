@@ -21,7 +21,7 @@
 
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
-
+#include <linux/version.h>
 #include "msm_drv.h"
 
 #define MAX_PLANE	4
@@ -40,8 +40,10 @@
 #define MSM_MODE_FLAG_SEAMLESS_VRR			(1<<3)
 /* Request to switch the bit clk */
 #define MSM_MODE_FLAG_SEAMLESS_DYN_CLK			(1<<4)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 /* Request to make the seamless switch */
 #define DRM_MODE_FLAG_SEAMLESS				(1<<5)
+#endif
 /* Request to switch the panel mode to video */
 #define MSM_MODE_FLAG_SEAMLESS_POMS_VID			(1<<6)
 /* Request to switch the panel mode to command */
@@ -311,4 +313,5 @@ static inline bool msm_atomic_needs_modeset(struct drm_crtc_state *state,
 		return true;
 	return false;
 }
+
 #endif /* __MSM_KMS_H__ */

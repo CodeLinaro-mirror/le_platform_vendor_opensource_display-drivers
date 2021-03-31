@@ -59,8 +59,12 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 	drm_mode_set_name(drm_mode);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static int dp_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_bridge_attach(struct drm_bridge *dp_bridge)
+#endif
 {
 	struct dp_bridge *bridge = to_dp_bridge(dp_bridge);
 
@@ -619,7 +623,11 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 
 	priv = dev->dev_private;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
+#else
+	rc = drm_bridge_attach(encoder, &bridge->base, NULL);
+#endif
 	if (rc) {
 		DP_ERR("failed to attach bridge, rc=%d\n", rc);
 		goto error_free_bridge;

@@ -160,8 +160,12 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			altmode->dp_altmode.base.orientation = ORIENTATION_NONE;
 			if (altmode->dp_cb && altmode->dp_cb->disconnect)
 				altmode->dp_cb->disconnect(altmode->dev);
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 			rc = dp_altmode_set_usb_dp_mode(altmode);
+#else
+			rc = dp_altmode_release_ss_lanes(altmode,
+					altmode->dp_altmode.base.multi_func);
+#endif
 			if (rc)
 				DP_ERR("failed to clear usb dp mode, rc: %d\n", rc);
 		}

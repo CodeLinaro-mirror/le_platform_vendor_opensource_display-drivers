@@ -159,8 +159,12 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYN_CLK;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static int dsi_bridge_attach(struct drm_bridge *bridge,
 			enum drm_bridge_attach_flags flags)
+#else
+static int dsi_bridge_attach(struct drm_bridge *bridge)
+#endif
 {
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
@@ -1190,7 +1194,11 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 		return 0;
 	}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	bridge = drm_bridge_chain_get_first_bridge(encoder);
+#else
+	bridge = encoder->bridge;
+#endif
 	if (!bridge) {
 		DSI_DEBUG("bridge is not available\n");
 		return 0;
@@ -1278,7 +1286,11 @@ struct dsi_bridge *dsi_drm_bridge_init(struct dsi_display *display,
 	bridge->base.funcs = &dsi_bridge_ops;
 	bridge->base.encoder = encoder;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
+#else
+	rc = drm_bridge_attach(encoder, &bridge->base, NULL);
+#endif
 	if (rc) {
 		DSI_ERR("failed to attach bridge, rc=%d\n", rc);
 		goto error_free_bridge;

@@ -4,8 +4,12 @@
  */
 
 #include <linux/of_platform.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 #include <linux/soc/qcom/msm_ext_display.h>
-
+#else
+#include <linux/msm_ext_display.h>
+#endif
 #include <drm/drm_dp_helper.h>
 
 #include "dp_catalog.h"

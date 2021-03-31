@@ -4568,7 +4568,8 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 		/* cache the encoder mask now for vblank work */
 		sde_crtc->cached_encoder_mask = crtc->state->encoder_mask;
 		/* max possible vsync_cnt(atomic_t) soft counter */
-		drm_crtc_set_max_vblank_count(crtc, INT_MAX);
+		if (crtc->funcs->get_vblank_counter)
+			drm_crtc_set_max_vblank_count(crtc, INT_MAX);
 		drm_crtc_vblank_on(crtc);
 	}
 
@@ -5459,6 +5460,7 @@ static u32 sde_crtc_get_vblank_counter(struct drm_crtc *crtc)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static bool sde_crtc_get_vblank_timestamp(struct drm_crtc *crtc, int *max_error,
 				ktime_t *tvblank, bool in_vblank_irq)
 {
@@ -5479,6 +5481,7 @@ static bool sde_crtc_get_vblank_timestamp(struct drm_crtc *crtc, int *max_error,
 
 	return false;
 }
+#endif
 
 static void sde_crtc_install_dest_scale_properties(struct sde_crtc *sde_crtc,
 		struct sde_mdss_cfg *catalog, struct sde_kms_info *info)
@@ -6803,7 +6806,9 @@ static const struct drm_crtc_funcs sde_crtc_funcs_v1 = {
 	.atomic_destroy_state = sde_crtc_destroy_state,
 	.late_register = sde_crtc_late_register,
 	.early_unregister = sde_crtc_early_unregister,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	.get_vblank_timestamp = sde_crtc_get_vblank_timestamp,
+#endif
 	.get_vblank_counter = sde_crtc_get_vblank_counter,
 };
 

@@ -6311,10 +6311,16 @@ static void dsi_display_drm_ext_adjust_timing(
 	mode->clock /= display->ctrl_count;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static enum drm_mode_status dsi_display_drm_ext_bridge_mode_valid(
 		struct drm_bridge *bridge,
 		const struct drm_display_info *info,
 		const struct drm_display_mode *mode)
+#else
+static enum drm_mode_status dsi_display_drm_ext_bridge_mode_valid(
+		struct drm_bridge *bridge,
+		const struct drm_display_mode *mode)
+#endif
 {
 	struct dsi_display_ext_bridge *ext_bridge;
 	struct drm_display_mode tmp;
@@ -6325,7 +6331,11 @@ static enum drm_mode_status dsi_display_drm_ext_bridge_mode_valid(
 
 	tmp = *mode;
 	dsi_display_drm_ext_adjust_timing(ext_bridge->display, &tmp);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	return ext_bridge->orig_funcs->mode_valid(bridge, info, &tmp);
+#else
+	return ext_bridge->orig_funcs->mode_valid(bridge, &tmp);
+#endif
 }
 
 static bool dsi_display_drm_ext_bridge_mode_fixup(
@@ -6477,7 +6487,11 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 		return -EINVAL;
 
 	drm = encoder->dev;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	bridge = drm_bridge_chain_get_first_bridge(encoder);
+#else
+	bridge = encoder->bridge;
+#endif
 	sde_conn = to_sde_connector(connector);
 	prev_bridge = bridge;
 
@@ -6518,7 +6532,11 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 			ext_bridge->funcs = &ext_bridge_info->bridge_funcs;
 		}
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		rc = drm_bridge_attach(encoder, ext_bridge, prev_bridge, 0);
+#else
+		rc = drm_bridge_attach(encoder, ext_bridge, prev_bridge);
+#endif
 		if (rc) {
 			DSI_ERR("[%s] ext brige attach failed, %d\n",
 				display->name, rc);

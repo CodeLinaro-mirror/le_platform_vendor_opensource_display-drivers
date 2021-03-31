@@ -550,6 +550,7 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 {
 	struct dp_mst_sim_port *port;
 	struct drm_display_mode mode_buf, *mode = &mode_buf;
+	u16 hdisplay, vdisplay;
 	u16 h_front_porch, h_pulse_width, h_back_porch;
 	u16 v_front_porch, v_pulse_width, v_back_porch;
 	bool h_active_high, v_active_high;
@@ -567,7 +568,7 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 	};
 
 	rc = of_property_read_u16(node, "qcom,mode-h-active",
-					&mode->hdisplay);
+					&hdisplay);
 	if (rc) {
 		DP_ERR("failed to read h-active, rc=%d\n", rc);
 		goto fail;
@@ -598,7 +599,7 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 					"qcom,mode-h-active-high");
 
 	rc = of_property_read_u16(node, "qcom,mode-v-active",
-					&mode->vdisplay);
+					&vdisplay);
 	if (rc) {
 		DP_ERR("failed to read v-active, rc=%d\n", rc);
 		goto fail;
@@ -635,9 +636,11 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 		goto fail;
 	}
 
+	mode->hdisplay = hdisplay;
 	mode->hsync_start = mode->hdisplay + h_front_porch;
 	mode->hsync_end = mode->hsync_start + h_pulse_width;
 	mode->htotal = mode->hsync_end + h_back_porch;
+	mode->vdisplay = vdisplay;
 	mode->vsync_start = mode->vdisplay + v_front_porch;
 	mode->vsync_end = mode->vsync_start + v_pulse_width;
 	mode->vtotal = mode->vsync_end + v_back_porch;

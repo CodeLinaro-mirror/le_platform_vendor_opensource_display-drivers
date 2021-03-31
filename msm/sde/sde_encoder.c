@@ -5536,7 +5536,11 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 			drm_mode->hdisplay, drm_mode->vdisplay);
 	drm_set_preferred_mode(conn, drm_mode->hdisplay, drm_mode->vdisplay);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 	bridge = drm_bridge_chain_get_first_bridge(encoder);
+#else
+	bridge = encoder->bridge;
+#endif
 	if (bridge) {
 		SDE_DEBUG_ENC(sde_enc, "Bridge mapped to encoder\n");
 		/*
@@ -5547,7 +5551,11 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		 * be updated with the current drm mode by
 		 * calling the bridge mode set ops.
 		 */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		drm_bridge_chain_mode_set(bridge, drm_mode, drm_mode);
+#else
+		drm_bridge_mode_set(bridge, drm_mode, drm_mode);
+#endif
 	} else {
 		SDE_ERROR_ENC(sde_enc, "No bridge attached to encoder\n");
 	}
