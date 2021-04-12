@@ -6485,7 +6485,6 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 	for (i = 0; i < display->ext_bridge_cnt; i++) {
 		struct dsi_display_ext_bridge *ext_bridge_info =
 				&display->ext_bridge[i];
-		struct drm_encoder *c_encoder;
 
 		/* return if ext bridge is already initialized */
 		if (ext_bridge_info->bridge)
@@ -6540,19 +6539,8 @@ int dsi_display_drm_ext_bridge_init(struct dsi_display *display,
 			goto error;
 		}
 
-		drm_connector_for_each_possible_encoder(ext_conn, c_encoder)
-			break;
-
-		if (!c_encoder) {
-			DSI_ERR("failed to get encoder\n");
-			rc = PTR_ERR(c_encoder);
-
-			spin_unlock_irq(&drm->mode_config.connector_list_lock);
-			goto error;
-		}
-
 		if (ext_conn && ext_conn != connector &&
-			c_encoder->base.id == bridge->encoder->base.id) {
+			drm_connector_has_possible_encoder(ext_conn, bridge->encoder)) {
 			list_del_init(&ext_conn->head);
 			display->ext_conn = ext_conn;
 		}
