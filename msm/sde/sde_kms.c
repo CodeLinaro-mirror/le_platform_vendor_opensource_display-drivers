@@ -4090,7 +4090,13 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		if (!is_sde_rsc_available(SDE_RSC_INDEX))
+
+		/**
+		 * Only halt AXI after device is registered. During probe when gdsc
+		 * proxy is running, halting AXI may cause mismatch between gdsc state
+		 * and AXI state.
+		 */
+		if (!is_sde_rsc_available(SDE_RSC_INDEX) && sde_kms->dev->registered)
 			sde_vbif_axi_halt_request(sde_kms);
 	}
 }
