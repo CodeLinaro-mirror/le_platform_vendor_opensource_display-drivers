@@ -138,6 +138,7 @@ struct sde_connector_ops {
 	 * get_mode_info - retrieve mode information
 	 * @connector: Pointer to drm connector structure
 	 * @drm_mode: Display mode set for the display
+	 * @sub_mode: Additional mode info to drm display mode
 	 * @mode_info: Out parameter. information of the display mode
 	 * @display: Pointer to private display structure
 	 * @avail_res: Pointer with curr available resources
@@ -145,6 +146,7 @@ struct sde_connector_ops {
 	 */
 	int (*get_mode_info)(struct drm_connector *connector,
 			const struct drm_display_mode *drm_mode,
+			struct msm_sub_mode *sub_mode,
 			struct msm_mode_info *mode_info,
 			void *display,
 			const struct msm_resource_caps_info *avail_res);
@@ -389,6 +391,24 @@ struct sde_connector_ops {
 	 * Returns: Qsync min fps value on success
 	 */
 	int (*get_qsync_min_fps)(void *display, u32 mode_fps);
+
+	/**
+	 * get_avr_step_req - Get the required avr_step for given fps rate
+	 * @display: Pointer to private display structure
+	 * @mode_fps: Fps value in dfps list
+	 * Returns: AVR step fps value on success
+	 */
+	int (*get_avr_step_req)(void *display, u32 mode_fps);
+
+	/**
+	 * set_submode_info - populate given sub mode blob
+	 * @connector: Pointer to drm connector structure
+	 * @info: Pointer to sde connector info structure
+	 * @display: Pointer to private display handle
+	 * @drm_mode: Pointer to drm_display_mode structure
+	 */
+	void (*set_submode_info)(struct drm_connector *conn,
+		void *info, void *display, struct drm_display_mode *drm_mode);
 };
 
 /**
@@ -484,6 +504,7 @@ struct sde_connector_dyn_hdr_metadata {
  * @allow_bl_update: Flag to indicate if BL update is allowed currently or not
  * @qsync_mode: Cached Qsync mode, 0=disabled, 1=continuous mode
  * @qsync_updated: Qsync settings were updated
+ * @avr_step: fps rate for fixed steps in AVR mode; 0 means step is disabled
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -553,6 +574,7 @@ struct sde_connector {
 	u8 hdr_plus_app_ver;
 	u32 qsync_mode;
 	bool qsync_updated;
+	u32 avr_step;
 
 	bool colorspace_updated;
 
@@ -603,6 +625,13 @@ struct sde_connector {
  */
 #define sde_connector_get_qsync_mode(C) \
 	((C) ? to_sde_connector((C))->qsync_mode : 0)
+
+/**
+ * sde_connector_get_avr_step - get sde connector's avr_step
+ * @C: Pointer to drm connector structure
+ * Returns: Current cached avr_step value for given connector
+ */
+#define sde_connector_get_avr_step(C) ((C) ? to_sde_connector((C))->avr_step : 0)
 
 /**
  * sde_connector_get_propinfo - get sde connector's property info pointer
@@ -1063,11 +1092,13 @@ int sde_connector_set_msm_mode(struct drm_connector_state *conn_state,
 * sde_connector_get_mode_info - retrieve mode info for given mode
 * @connector: Pointer to drm connector structure
 * @drm_mode: Display mode set for the display
+* @sub_mode: Additional mode info to drm display mode
 * @mode_info: Out parameter. information of the display mode
 * Returns: Zero on success
 */
 int sde_connector_get_mode_info(struct drm_connector *conn,
 		const struct drm_display_mode *drm_mode,
+		struct msm_sub_mode *sub_mode,
 		struct msm_mode_info *mode_info);
 
 /**
@@ -1117,5 +1148,8 @@ int sde_connector_get_panel_vfp(struct drm_connector *connector,
  * @connector: Pointer to DRM connector object
  */
 int sde_connector_esd_status(struct drm_connector *connector);
+
+const char *sde_conn_get_topology_name(struct drm_connector *conn,
+		struct msm_display_topology topology);
 
 #endif /* _SDE_CONNECTOR_H_ */

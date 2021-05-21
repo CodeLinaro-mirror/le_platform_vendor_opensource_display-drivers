@@ -175,13 +175,28 @@ static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
 	c = &ctx->hw;
 	if (avr_params->avr_mode) {
 		avr_ctrl = BIT(0);
-		avr_mode =
-		(avr_params->avr_mode == SDE_RM_QSYNC_ONE_SHOT_MODE) ?
-			(BIT(0) | BIT(8)) : 0x0;
+		avr_mode = (avr_params->avr_mode == SDE_RM_QSYNC_ONE_SHOT_MODE) ?
+				(BIT(0) | BIT(8)) : 0x0;
+		if (avr_params->avr_step_lines)
+			avr_mode |= avr_params->avr_step_lines << 16;
 	}
 
 	SDE_REG_WRITE(c, INTF_AVR_CONTROL, avr_ctrl);
 	SDE_REG_WRITE(c, INTF_AVR_MODE, avr_mode);
+}
+
+static u32 sde_hw_intf_get_avr_status(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 avr_ctrl;
+
+	if (!ctx)
+		return false;
+
+	c = &ctx->hw;
+	avr_ctrl = SDE_REG_READ(c, INTF_AVR_CONTROL);
+
+	return avr_ctrl >> 31;
 }
 
 static inline void _check_and_set_comp_bit(struct sde_hw_intf *ctx,
@@ -193,6 +208,8 @@ static inline void _check_and_set_comp_bit(struct sde_hw_intf *ctx,
 			(IS_SDE_MAJOR_SAME(ctx->mdss->hwversion,
 				SDE_HW_VER_600) && dsc_4hs_merge))
 		(*intf_cfg2) |= BIT(12);
+	else if (!compression_en)
+		(*intf_cfg2) &= ~BIT(12);
 }
 
 static void sde_hw_intf_reset_counter(struct sde_hw_intf *ctx)
@@ -463,10 +480,9 @@ static void sde_hw_intf_bind_pingpong_blk(
 
 	c = &intf->hw;
 
-	mux_cfg = SDE_REG_READ(c, INTF_MUX);
-	mux_cfg &= ~0xf000f;
-
 	if (enable) {
+		mux_cfg = SDE_REG_READ(c, INTF_MUX);
+		mux_cfg &= ~0x0f;
 		mux_cfg |= (pp - PINGPONG_0) & 0x7;
 		/* Splitlink case, pp0->sublink0, pp1->sublink1 */
 		if (intf->cfg.split_link_en)
@@ -867,6 +883,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (cap & BIT(SDE_INTF_WD_TIMER))
 		ops->setup_vsync_source = sde_hw_intf_setup_vsync_source;
+
+	if (cap & BIT(SDE_INTF_AVR_STATUS))
+		ops->get_avr_status = sde_hw_intf_get_avr_status;
 
 	if (cap & BIT(SDE_INTF_TE)) {
 		ops->setup_tearcheck = sde_hw_intf_setup_te_config;

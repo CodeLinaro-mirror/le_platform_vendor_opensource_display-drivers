@@ -37,7 +37,7 @@
 #define IS_COMPATIBLE_PP_DSC(p, d) (p % 2 == d % 2)
 
 /* ~one vsync poll time for rsvp_nxt to cleared by modeset from commit thread */
-#define RM_NXT_CLEAR_POLL_TIMEOUT_US 16600
+#define RM_NXT_CLEAR_POLL_TIMEOUT_US 33000
 
 /**
  * toplogy information to be used when ctl path version does not
@@ -101,6 +101,22 @@ static const struct sde_rm_topology_def g_top_table_v1[SDE_RM_TOPOLOGY_MAX] = {
 			MSM_DISPLAY_COMPRESSION_DSC },
 };
 
+char sde_hw_blk_str[SDE_HW_BLK_MAX][SDE_HW_BLK_NAME_LEN] = {
+	"top",
+	"sspp",
+	"lm",
+	"dspp",
+	"ds",
+	"ctl",
+	"cdm",
+	"pingpong",
+	"intf",
+	"wb",
+	"dsc",
+	"vdc",
+	"merge_3d",
+	"qdss",
+};
 
 /**
  * struct sde_rm_requirements - Reservation requirements parameter bundle
@@ -725,6 +741,54 @@ static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
 fail:
 	return rc;
 }
+
+#ifdef CONFIG_DEBUG_FS
+static int _sde_rm_status_show(struct seq_file *s, void *data)
+{
+	struct sde_rm *rm;
+	struct sde_rm_hw_blk *blk;
+	u32 type, allocated, unallocated;
+
+	if (!s || !s->private)
+		return -EINVAL;
+
+	rm = s->private;
+	for (type = SDE_HW_BLK_LM; type < SDE_HW_BLK_MAX; type++) {
+		allocated = 0;
+		unallocated = 0;
+		list_for_each_entry(blk, &rm->hw_blks[type], list) {
+			if (!blk->rsvp && !blk->rsvp_nxt)
+				unallocated++;
+			else
+				allocated++;
+		}
+		seq_printf(s, "type:%d blk:%s allocated:%d unallocated:%d\n",
+			type, sde_hw_blk_str[type], allocated, unallocated);
+	}
+
+	return 0;
+}
+
+static int _sde_rm_debugfs_status_open(struct inode *inode,
+		struct file *file)
+{
+	return single_open(file, _sde_rm_status_show, inode->i_private);
+}
+
+void sde_rm_debugfs_init(struct sde_rm *sde_rm, struct dentry *parent)
+{
+	static const struct file_operations debugfs_rm_status_fops = {
+		.open =		_sde_rm_debugfs_status_open,
+		.read =		seq_read,
+	};
+
+	debugfs_create_file("rm_status", 0400, parent, sde_rm, &debugfs_rm_status_fops);
+}
+#else
+void sde_rm_debugfs_init(struct sde_rm *rm, struct dentry *parent)
+{
+}
+#endif
 
 int sde_rm_init(struct sde_rm *rm,
 		struct sde_mdss_cfg *cat,
@@ -1860,55 +1924,35 @@ static int _sde_rm_make_next_rsvp(struct sde_rm *rm, struct drm_encoder *enc,
 	return ret;
 }
 
-static int _sde_rm_update_pipe_cnt_from_active(
+static int _sde_rm_update_active_only_pipes(
 		struct sde_splash_display *splash_display,
 		u32 active_pipes_mask)
 {
+	struct sde_sspp_index_info *pipe_info;
 	int i;
-	u32 sspp_present = 0, space_remain = 0;
 
 	if (!active_pipes_mask) {
 		return 0;
 	} else if (!splash_display) {
 		SDE_ERROR("invalid splash display provided\n");
 		return -EINVAL;
-	} else if (splash_display->pipe_cnt >=
-			ARRAY_SIZE(splash_display->pipes)) {
-		SDE_ERROR("no room to add active pipes to pipe array\n");
-		return -EINVAL;
 	}
 
-	for (i = 0; i < splash_display->pipe_cnt; i++)
-		sspp_present |= BIT(splash_display->pipes[i].sspp);
-
-	space_remain = ARRAY_SIZE(splash_display->pipes)
-			- splash_display->pipe_cnt;
-
+	pipe_info = &splash_display->pipe_info;
 	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
-		/* Skip planes already present in the array */
-		if (!(active_pipes_mask & BIT(i)) ||
-				(sspp_present & BIT(i)))
+		if (!(active_pipes_mask & BIT(i)))
 			continue;
 
-		if (space_remain < R_MAX) {
-			SDE_ERROR("not enough room to add active pipe %d", i);
-			return -EINVAL;
-		}
+		if (test_bit(i, pipe_info->pipes) || test_bit(i, pipe_info->virt_pipes))
+			continue;
 
 		/*
-		 * A plane in active but not sspp_present indicates a non-pixel
+		 * A pipe is active but not staged indicates a non-pixel
 		 * plane. Register both rectangles as we can't differentiate
 		 */
-		splash_display->pipes[splash_display->pipe_cnt].sspp = i;
-		splash_display->pipes[splash_display->pipe_cnt].is_virtual =
-				false;
-		splash_display->pipe_cnt++;
-		space_remain--;
-		splash_display->pipes[splash_display->pipe_cnt].sspp = i;
-		splash_display->pipes[splash_display->pipe_cnt].is_virtual =
-				true;
-		splash_display->pipe_cnt++;
-		space_remain--;
+		set_bit(i, pipe_info->pipes);
+		set_bit(i, pipe_info->virt_pipes);
+		SDE_DEBUG("pipe %d is active:0x%x but not staged\n", i, active_pipes_mask);
 	}
 
 	return 0;
@@ -1926,10 +1970,10 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 		struct sde_hw_ctl *ctl,
 		struct sde_splash_display *splash_display)
 {
-	u32 lm_reg, max_cnt, active_pipes_mask = 0;
+	u32 active_pipes_mask = 0;
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
-	size_t start_count;
+	size_t pipes_per_lm;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -1937,7 +1981,6 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	}
 
 	sde_kms = container_of(rm, struct sde_kms, rm);
-	max_cnt = ARRAY_SIZE(splash_display->pipes);
 
 	sde_rm_init_hw_iter(&iter_lm, 0, SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&iter_dsc, 0, SDE_HW_BLK_DSC);
@@ -1945,48 +1988,28 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 		if (splash_display->lm_cnt >= MAX_DATA_PATH_PER_DSIPLAY)
 			break;
 
-		lm_reg = ctl->ops.read_ctl_layers(ctl, iter_lm.blk->id);
-		if (!lm_reg)
-			continue;
-
-		splash_display->lm_ids[splash_display->lm_cnt++] =
-			iter_lm.blk->id;
-		SDE_DEBUG("lm_cnt=%d lm_reg[%d]=0x%x\n", splash_display->lm_cnt,
-				iter_lm.blk->id - LM_0, lm_reg);
-
-		start_count = splash_display->pipe_cnt;
 		if (ctl->ops.get_staged_sspp) {
-			struct sde_sspp_index_info *start =
-				&splash_display->pipes[
-					splash_display->pipe_cnt];
-
-			splash_display->pipe_cnt += ctl->ops.get_staged_sspp(
-					ctl, iter_lm.blk->id, start,
-					max_cnt - splash_display->pipe_cnt);
-		}
-
-		if (sde_kms->splash_data.type == SDE_VM_HANDOFF) {
-			/* Allow VM handoff without any pipes, as it is a
-			 * valid case to have NULL commit before the
-			 * transition.
-			 */
-			SDE_DEBUG("VM handoff with no pipes staged\n");
-		} else if (start_count == splash_display->pipe_cnt) {
-			SDE_ERROR("no pipes detected on LM-%d\n",
-					iter_lm.blk->id - LM_0);
-			return 0;
-		} else if (splash_display->pipe_cnt > max_cnt) {
-			SDE_ERROR("found %d pipes exceed max of %d\n",
-					splash_display->pipe_cnt, max_cnt);
-			return 0;
+			// reset bordercolor from previous LM
+			splash_display->pipe_info.bordercolor = false;
+			pipes_per_lm = ctl->ops.get_staged_sspp(
+					ctl, iter_lm.blk->id,
+					&splash_display->pipe_info);
+			if (pipes_per_lm ||
+					splash_display->pipe_info.bordercolor) {
+				splash_display->lm_ids[splash_display->lm_cnt++] =
+					iter_lm.blk->id;
+				SDE_DEBUG("lm_cnt=%d lm_id %d pipe_cnt%d\n",
+						splash_display->lm_cnt,
+						iter_lm.blk->id - LM_0,
+						pipes_per_lm);
+			}
 		}
 	}
 
 	if (ctl->ops.get_active_pipes)
 		active_pipes_mask = ctl->ops.get_active_pipes(ctl);
 
-	if (_sde_rm_update_pipe_cnt_from_active(splash_display,
-			active_pipes_mask))
+	if (_sde_rm_update_active_only_pipes(splash_display, active_pipes_mask))
 		return 0;
 
 	while (_sde_rm_get_hw_locked(rm, &iter_dsc)) {
@@ -2496,7 +2519,7 @@ int sde_rm_reserve(
 
 	/* Check if this is just a page-flip */
 	if (!_sde_rm_is_display_in_cont_splash(sde_kms, enc) &&
-			!msm_atomic_needs_modeset(crtc_state))
+			!msm_atomic_needs_modeset(crtc_state, conn_state))
 		return 0;
 
 	comp_info = kzalloc(sizeof(*comp_info), GFP_KERNEL);
@@ -2506,7 +2529,7 @@ int sde_rm_reserve(
 	SDE_DEBUG("reserving hw for conn %d enc %d crtc %d test_only %d\n",
 			conn_state->connector->base.id, enc->base.id,
 			crtc_state->crtc->base.id, test_only);
-	SDE_EVT32(enc->base.id, conn_state->connector->base.id);
+	SDE_EVT32(enc->base.id, conn_state->connector->base.id, test_only);
 
 	mutex_lock(&rm->rm_lock);
 
@@ -2526,9 +2549,10 @@ int sde_rm_reserve(
 	if (test_only && rsvp_cur && rsvp_nxt) {
 		rsvp_nxt = _sde_rm_poll_get_rsvp_nxt_locked(rm, enc);
 		if (rsvp_nxt) {
-			SDE_ERROR("poll timeout cur %d nxt %d enc %d\n",
+			pr_err("poll timeout cur %d nxt %d enc %d\n",
 				rsvp_cur->seq, rsvp_nxt->seq, enc->base.id);
-			ret = -EINVAL;
+			SDE_EVT32(enc->base.id, rsvp_cur->seq, rsvp_nxt->seq, SDE_EVTLOG_ERROR);
+			ret = -EAGAIN;
 			goto end;
 		}
 	}
@@ -2608,61 +2632,6 @@ end:
 	_sde_rm_print_rsvps(rm, SDE_RM_STAGE_FINAL);
 	mutex_unlock(&rm->rm_lock);
 
-	return ret;
-}
-
-int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
-		struct sde_hw_blk *hw, struct drm_encoder *enc)
-{
-	struct sde_rm_hw_blk *blk;
-	struct sde_rm_rsvp *rsvp;
-	int ret = 0;
-
-	if (!rm || !hw || !enc) {
-		SDE_ERROR("invalid parameters\n");
-		return -EINVAL;
-	}
-
-	if (hw->type >= SDE_HW_BLK_MAX) {
-		SDE_ERROR("invalid HW type\n");
-		return -EINVAL;
-	}
-
-	mutex_lock(&rm->rm_lock);
-
-	rsvp = _sde_rm_get_rsvp_cur(rm, enc);
-	if (!rsvp) {
-		rsvp = kzalloc(sizeof(*rsvp), GFP_KERNEL);
-		if (!rsvp) {
-			ret = -ENOMEM;
-			goto end;
-		}
-
-		rsvp->seq = ++rm->rsvp_next_seq;
-		rsvp->enc_id = enc->base.id;
-		list_add_tail(&rsvp->list, &rm->rsvps);
-
-		SDE_DEBUG("create rsvp %d for enc %d\n",
-					rsvp->seq, rsvp->enc_id);
-	}
-
-	blk = kzalloc(sizeof(*blk), GFP_KERNEL);
-	if (!blk) {
-		ret = -ENOMEM;
-		goto end;
-	}
-
-	blk->type = hw->type;
-	blk->id = hw->id;
-	blk->hw = hw;
-	blk->rsvp = rsvp;
-	list_add_tail(&blk->list, &rm->hw_blks[hw->type]);
-
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id,
-					rsvp->seq, rsvp->enc_id);
-
-end:
-	mutex_unlock(&rm->rm_lock);
 	return ret;
 }
 

@@ -136,6 +136,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_INVERSE_PMA,
 	PLANE_PROP_FP16_IGC,
 	PLANE_PROP_FP16_UNMULT,
+	PLANE_PROP_UBWC_STATS_ROI,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,
@@ -181,6 +182,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_CACHE_STATE,
 	CRTC_PROP_VM_REQ_STATE,
 	CRTC_PROP_NOISE_LAYER_V1,
+	CRTC_PROP_FRAME_DATA_BUF,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -193,6 +195,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_HDR_INFO,
 	CONNECTOR_PROP_EXT_HDR_INFO,
 	CONNECTOR_PROP_PP_DITHER,
+	CONNECTOR_PROP_PP_CWB_DITHER,
 	CONNECTOR_PROP_HDR_METADATA,
 	CONNECTOR_PROP_DEMURA_PANEL_ID,
 
@@ -222,6 +225,8 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_QSYNC_MODE,
 	CONNECTOR_PROP_CMD_FRAME_TRIGGER_MODE,
 	CONNECTOR_PROP_SET_PANEL_MODE,
+	CONNECTOR_PROP_AVR_STEP,
+	CONNECTOR_PROP_DSC_MODE,
 
 	/* total # of properties */
 	CONNECTOR_PROP_COUNT
@@ -304,6 +309,18 @@ enum panel_op_mode {
 };
 
 /**
+ * enum msm_display_dsc_mode - panel dsc mode
+ * @MSM_DISPLAY_DSC_MODE_NONE: No operation
+ * @MSM_DISPLAY_DSC_MODE_ENABLED: DSC is enabled
+ * @MSM_DISPLAY_DSC_MODE_DISABLED: DSC is disabled
+ */
+enum msm_display_dsc_mode {
+	MSM_DISPLAY_DSC_MODE_NONE,
+	MSM_DISPLAY_DSC_MODE_ENABLED,
+	MSM_DISPLAY_DSC_MODE_DISABLED,
+};
+
+/**
  * struct msm_display_mode - wrapper for drm_display_mode
  * @base: drm_display_mode attached to this msm_mode
  * @private_flags: integer holding private driver mode flags
@@ -313,6 +330,14 @@ struct msm_display_mode {
 	struct drm_display_mode *base;
 	u32 private_flags;
 	u32 *private;
+};
+
+/**
+ * struct msm_sub_mode - msm display sub mode
+ * @dsc_enabled: boolean used to indicate if dsc should be enabled
+ */
+struct msm_sub_mode {
+	enum msm_display_dsc_mode dsc_mode;
 };
 
 /**
@@ -765,6 +790,7 @@ struct msm_resource_caps_info {
  * @roi_caps:           Region of interest capability info
  * @qsync_min_fps	Minimum fps supported by Qsync feature
  * @has_qsync_min_fps_list True if dsi-supported-qsync-min-fps-list exits
+ * @has_avr_step_req    Panel has defined requirement for AVR steps
  * @te_source		vsync source pin information
  * @dsc_count:		max dsc hw blocks used by display (only available
  *			for dsi display)
@@ -794,6 +820,7 @@ struct msm_display_info {
 
 	uint32_t qsync_min_fps;
 	bool has_qsync_min_fps_list;
+	bool has_avr_step_req;
 
 	uint32_t te_source;
 
@@ -888,8 +915,19 @@ struct msm_drm_private {
 	struct msm_rd_state *hangrd;   /* debugfs to dump hanging submits */
 	struct msm_perf_state *perf;
 
-	/* list of GEM objects: */
+	/*
+	 * List of inactive GEM objects.  Every bo is either in the inactive_list
+	 * or gpu->active_list (for the gpu it is active on[1])
+	 *
+	 * These lists are protected by mm_lock.  If struct_mutex is involved, it
+	 * should be aquired prior to mm_lock.  One should *not* hold mm_lock in
+	 * get_pages()/vmap()/etc paths, as they can trigger the shrinker.
+	 *
+	 * [1] if someone ever added support for the old 2d cores, there could be
+	 *     more than one gpu object
+	 */
 	struct list_head inactive_list;
+	struct mutex mm_lock;
 
 	struct workqueue_struct *wq;
 
@@ -1353,6 +1391,7 @@ struct clk *msm_clk_bulk_get_clock(struct clk_bulk_data *bulk, int count,
 void __iomem *msm_ioremap(struct platform_device *pdev, const char *name,
 		const char *dbgname);
 unsigned long msm_iomap_size(struct platform_device *pdev, const char *name);
+unsigned long msm_get_phys_addr(struct platform_device *pdev, const char *name);
 void msm_iounmap(struct platform_device *dev, void __iomem *addr);
 void msm_writel(u32 data, void __iomem *addr);
 u32 msm_readl(const void __iomem *addr);

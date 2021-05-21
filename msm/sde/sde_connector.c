@@ -66,6 +66,11 @@ static const struct drm_prop_enum_list e_qsync_mode[] = {
 	{SDE_RM_QSYNC_CONTINUOUS_MODE,	"continuous"},
 	{SDE_RM_QSYNC_ONE_SHOT_MODE,	"one_shot"},
 };
+static const struct drm_prop_enum_list e_dsc_mode[] = {
+	{MSM_DISPLAY_DSC_MODE_NONE, "none"},
+	{MSM_DISPLAY_DSC_MODE_ENABLED, "dsc_enabled"},
+	{MSM_DISPLAY_DSC_MODE_DISABLED, "dsc_disabled"},
+};
 static const struct drm_prop_enum_list e_frame_trigger_mode[] = {
 	{FRAME_DONE_WAIT_DEFAULT, "default"},
 	{FRAME_DONE_WAIT_SERIALIZE, "serialize_frame_trigger"},
@@ -406,6 +411,7 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 {
 	struct sde_kms *sde_kms;
 	struct drm_encoder *drm_enc = NULL;
+	struct sde_connector *sde_conn;
 
 	sde_kms = _sde_connector_get_kms(conn);
 	if (!sde_kms) {
@@ -413,12 +419,17 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 		return;
 	}
 
+	sde_conn = to_sde_connector(conn);
 	if (conn->state && conn->state->best_encoder)
 		drm_enc = conn->state->best_encoder;
 	else
 		drm_enc = conn->encoder;
 
 	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res);
+	if ((sde_kms->catalog->allowed_dsc_reservation_switch &
+		SDE_DP_DSC_RESERVATION_SWITCH) &&
+		sde_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+		avail_res->num_dsc = sde_kms->catalog->dsc_count;
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
 }
@@ -441,6 +452,7 @@ int sde_connector_set_msm_mode(struct drm_connector_state *conn_state,
 
 int sde_connector_get_mode_info(struct drm_connector *conn,
 		const struct drm_display_mode *drm_mode,
+		struct msm_sub_mode *sub_mode,
 		struct msm_mode_info *mode_info)
 {
 	struct sde_connector *sde_conn;
@@ -455,7 +467,7 @@ int sde_connector_get_mode_info(struct drm_connector *conn,
 
 	sde_connector_get_avail_res_info(conn, &avail_res);
 
-	return sde_conn->ops.get_mode_info(conn, drm_mode,
+	return sde_conn->ops.get_mode_info(conn, drm_mode, sub_mode,
 			mode_info, sde_conn->display, &avail_res);
 }
 
@@ -697,7 +709,7 @@ void sde_connector_set_qsync_params(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
-	u32 qsync_propval = 0;
+	u32 qsync_propval = 0, step_val = 0;
 	bool prop_dirty;
 
 	if (!connector)
@@ -718,6 +730,17 @@ void sde_connector_set_qsync_params(struct drm_connector *connector)
 					c_conn->qsync_mode, qsync_propval);
 			c_conn->qsync_updated = true;
 			c_conn->qsync_mode = qsync_propval;
+		}
+	}
+
+	prop_dirty = msm_property_is_dirty(&c_conn->property_info, &c_state->property_state,
+					CONNECTOR_PROP_AVR_STEP);
+	if (prop_dirty) {
+		step_val = sde_connector_get_property(c_conn->base.state, CONNECTOR_PROP_AVR_STEP);
+		if (step_val != c_conn->avr_step) {
+			SDE_DEBUG("updated avr step %d -> %d\n", c_conn->avr_step, step_val);
+			c_conn->qsync_updated = true;
+			c_conn->avr_step = step_val;
 		}
 	}
 }
@@ -1471,11 +1494,6 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 
 	c_conn = to_sde_connector(connector);
 
-	if (!val) {
-		rc = -EINVAL;
-		goto end;
-	}
-
 	rc = copy_from_user(&prev_user_fd, (void __user *)val,
 			sizeof(uint64_t));
 	if (rc) {
@@ -1553,10 +1571,10 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		rc = _sde_connector_set_prop_out_fb(connector, state, val);
 		break;
 	case CONNECTOR_PROP_RETIRE_FENCE:
-		rc = _sde_connector_set_prop_retire_fence(connector, state, val);
-		if (!rc)
+		if (!val)
 			goto end;
 
+		rc = _sde_connector_set_prop_retire_fence(connector, state, val);
 		break;
 	case CONNECTOR_PROP_ROI_V1:
 		rc = _sde_connector_set_roi_v1(c_conn, c_state,
@@ -1978,6 +1996,8 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 {
 	struct drm_connector *connector = file->private_data;
 	struct sde_connector *c_conn = NULL;
+	struct sde_vm_ops *vm_ops;
+	struct sde_kms *sde_kms;
 	char *input, *token, *input_copy, *input_dup = NULL;
 	const char *delim = " ";
 	char buffer[MAX_CMD_PAYLOAD_SIZE] = {0};
@@ -1988,8 +2008,13 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
-
 	c_conn = to_sde_connector(connector);
+
+	sde_kms = _sde_connector_get_kms(&c_conn->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	}
 
 	if (!c_conn->ops.cmd_transfer) {
 		SDE_ERROR("no cmd transfer support for connector name %s\n",
@@ -2000,6 +2025,14 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 	input = kzalloc(count + 1, GFP_KERNEL);
 	if (!input)
 		return -ENOMEM;
+
+	vm_ops = sde_vm_get_ops(sde_kms);
+	sde_vm_lock(sde_kms);
+	if (vm_ops && vm_ops->vm_owns_hw && !vm_ops->vm_owns_hw(sde_kms)) {
+		SDE_DEBUG("op not supported due to HW unavailablity\n");
+		rc = -EOPNOTSUPP;
+		goto end;
+	}
 
 	if (copy_from_user(input, p, count)) {
 		SDE_ERROR("copy from user failed\n");
@@ -2050,6 +2083,7 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 end1:
 	kfree(input_dup);
 end:
+	sde_vm_unlock(sde_kms);
 	kfree(input);
 	return rc;
 }
@@ -2472,16 +2506,39 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 		return;
 
 	SDE_EVT32(SDE_EVTLOG_ERROR);
+	conn->panel_dead = true;
 	sde_encoder_display_failure_notification(conn->encoder,
 		skip_pre_kickoff);
 
-	conn->panel_dead = true;
 	event.type = DRM_EVENT_PANEL_DEAD;
 	event.length = sizeof(bool);
 	msm_mode_object_event_notify(&conn->base.base,
 		conn->base.dev, &event, (u8 *)&conn->panel_dead);
 	SDE_ERROR("esd check failed report PANEL_DEAD conn_id: %d enc_id: %d\n",
 			conn->base.base.id, conn->encoder->base.id);
+}
+
+const char *sde_conn_get_topology_name(struct drm_connector *conn,
+		struct msm_display_topology topology)
+{
+	struct sde_kms *sde_kms;
+	int topology_idx = 0;
+
+	sde_kms = _sde_connector_get_kms(conn);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return NULL;
+	}
+
+	topology_idx = (int)sde_rm_get_topology_name(&sde_kms->rm,
+				topology);
+
+	if (topology_idx >= SDE_RM_TOPOLOGY_MAX) {
+		SDE_ERROR("invalid topology\n");
+		return NULL;
+	}
+
+	return e_topology_name[topology_idx].name;
 }
 
 int sde_connector_esd_status(struct drm_connector *conn)
@@ -2589,6 +2646,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 	struct sde_connector *c_conn = NULL;
 	struct drm_display_mode *mode;
 	struct msm_mode_info mode_info;
+	const char *topo_name = NULL;
 	int rc = 0;
 
 	sde_kms = _sde_connector_get_kms(conn);
@@ -2604,12 +2662,10 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 	}
 
 	list_for_each_entry(mode, &conn->modes, head) {
-		int topology_idx = 0;
-		u32 panel_mode_caps = 0;
 
 		memset(&mode_info, 0, sizeof(mode_info));
 
-		rc = sde_connector_get_mode_info(&c_conn->base, mode,
+		rc = sde_connector_get_mode_info(&c_conn->base, mode, NULL,
 				&mode_info);
 		if (rc) {
 			SDE_ERROR_CONN(c_conn,
@@ -2623,20 +2679,12 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		sde_kms_info_add_keyint(info, "bit_clk_rate",
 					mode_info.clk_rate);
 
-		if (mode_info.bit_clk_count > 0)
-			sde_kms_info_add_list(info, "dyn_bitclk_list",
-					mode_info.bit_clk_rates,
-					mode_info.bit_clk_count);
-
-
-		topology_idx = (int)sde_rm_get_topology_name(&sde_kms->rm,
-					mode_info.topology);
-		if (topology_idx < SDE_RM_TOPOLOGY_MAX) {
-			sde_kms_info_add_keystr(info, "topology",
-					e_topology_name[topology_idx].name);
+		if (c_conn->ops.set_submode_info) {
+			c_conn->ops.set_submode_info(conn, info, c_conn->display, mode);
 		} else {
-			SDE_ERROR_CONN(c_conn, "invalid topology\n");
-			continue;
+			topo_name = sde_conn_get_topology_name(conn, mode_info.topology);
+			if (topo_name)
+				sde_kms_info_add_keystr(info, "topology", topo_name);
 		}
 
 		sde_kms_info_add_keyint(info, "has_cwb_crop", sde_kms->catalog->has_cwb_crop);
@@ -2648,14 +2696,6 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "allowed_mode_switch",
 			mode_info.allowed_mode_switches);
-
-		if (mode_info.panel_mode_caps & DSI_OP_CMD_MODE)
-			panel_mode_caps |= DRM_MODE_FLAG_CMD_MODE_PANEL;
-		if (mode_info.panel_mode_caps & DSI_OP_VIDEO_MODE)
-			panel_mode_caps |= DRM_MODE_FLAG_VID_MODE_PANEL;
-
-		sde_kms_info_add_keyint(info, "panel_mode_capabilities",
-			panel_mode_caps);
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
@@ -2859,11 +2899,19 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			CONNECTOR_PROP_AUTOREFRESH);
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
-		if (sde_kms->catalog->has_qsync && display_info->qsync_min_fps)
+		if (sde_kms->catalog->has_qsync && display_info->qsync_min_fps) {
 			msm_property_install_enum(&c_conn->property_info,
 					"qsync_mode", 0, 0, e_qsync_mode,
 					ARRAY_SIZE(e_qsync_mode), 0,
 					CONNECTOR_PROP_QSYNC_MODE);
+			if (sde_kms->catalog->has_avr_step)
+				msm_property_install_range(&c_conn->property_info,
+						"avr_step", 0x0, 0, U32_MAX, 0,
+						CONNECTOR_PROP_AVR_STEP);
+		}
+
+		msm_property_install_enum(&c_conn->property_info, "dsc_mode", 0,
+			0, e_dsc_mode, ARRAY_SIZE(e_dsc_mode), 0, CONNECTOR_PROP_DSC_MODE);
 
 		if (display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE)
 			msm_property_install_enum(&c_conn->property_info,

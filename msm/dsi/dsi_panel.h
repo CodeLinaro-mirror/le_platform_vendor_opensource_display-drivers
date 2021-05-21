@@ -95,6 +95,11 @@ struct dsi_qsync_capabilities {
 	int qsync_min_fps_list_len;
 };
 
+struct dsi_avr_capabilities {
+	u32 *avr_step_fps_list;
+	u32 avr_step_fps_list_len;
+};
+
 struct dsi_dyn_clk_caps {
 	bool dyn_clk_support;
 	enum dsi_dyn_clk_feature_type type;
@@ -199,6 +204,7 @@ struct dsi_panel_ops {
 	int (*bl_register)(struct dsi_panel *panel);
 	int (*bl_unregister)(struct dsi_panel *panel);
 	int (*parse_gpios)(struct dsi_panel *panel);
+	int (*parse_power_cfg)(struct dsi_panel *panel);
 };
 
 struct dsi_panel {
@@ -222,6 +228,7 @@ struct dsi_panel {
 	struct dsi_dfps_capabilities dfps_caps;
 	struct dsi_dyn_clk_caps dyn_clk_caps;
 	struct dsi_panel_phy_props phy_props;
+	bool dsc_switch_supported;
 
 	struct dsi_display_mode *cur_mode;
 	u32 num_timing_nodes;
@@ -246,6 +253,7 @@ struct dsi_panel {
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
 	struct dsi_qsync_capabilities qsync_caps;
+	struct dsi_avr_capabilities avr_caps;
 
 	char dce_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;

@@ -580,6 +580,38 @@ static void dsi_phy_disable_hw(struct msm_dsi_phy *phy)
 }
 
 /**
+ * dsi_phy_check_resource() - check if DSI PHY is probed
+ * @of_node:    of_node of the DSI PHY.
+ *
+ * Checks if the DSI PHY has been probed and is available.
+ *
+ * Return: status of DSI PHY
+ */
+bool dsi_phy_check_resource(struct device_node *of_node)
+{
+	struct list_head *pos, *tmp;
+	struct msm_dsi_phy *phy = NULL;
+
+	mutex_lock(&dsi_phy_list_lock);
+	list_for_each_safe(pos, tmp, &dsi_phy_list) {
+		struct dsi_phy_list_item *n;
+
+		n = list_entry(pos, struct dsi_phy_list_item, list);
+
+		if (!n->phy || !n->phy->pdev)
+			break;
+
+		if (n->phy->pdev->dev.of_node == of_node) {
+			phy = n->phy;
+			break;
+		}
+	}
+	mutex_unlock(&dsi_phy_list_lock);
+
+	return phy ? true : false;
+}
+
+/**
  * dsi_phy_get() - get a dsi phy handle from device node
  * @of_node:           device node for dsi phy controller
  *
@@ -657,7 +689,9 @@ int dsi_phy_drv_init(struct msm_dsi_phy *dsi_phy)
 
 	snprintf(dbg_name, DSI_DEBUG_NAME_LEN, "dsi%d_phy", dsi_phy->index);
 	sde_dbg_reg_register_base(dbg_name, dsi_phy->hw.base,
-				msm_iomap_size(dsi_phy->pdev, "dsi_phy"));
+			msm_iomap_size(dsi_phy->pdev, "dsi_phy"),
+			msm_get_phys_addr(dsi_phy->pdev, "dsi_phy"), SDE_DBG_DSI);
+
 	return 0;
 }
 

@@ -1239,6 +1239,38 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_avr_caps(struct dsi_panel *panel,
+				     struct device_node *of_node)
+{
+	struct dsi_avr_capabilities *avr_caps = &panel->avr_caps;
+	struct dsi_parser_utils *utils = &panel->utils;
+	int val, rc = 0;
+
+	val = utils->count_u32_elems(utils->data, "qcom,dsi-qsync-avr-step-list");
+	if (val <= 0) {
+		DSI_DEBUG("[%s] optional avr step list not defined, val:%d\n", panel->name, val);
+		return rc;
+	} else if (val > 1 && val != panel->dfps_caps.dfps_list_len) {
+		DSI_ERR("[%s] avr step list size %d not same as dfps list %d\n",
+				val, panel->dfps_caps.dfps_list_len);
+		return -EINVAL;
+	}
+
+	avr_caps->avr_step_fps_list = kcalloc(val, sizeof(u32), GFP_KERNEL);
+	if (!avr_caps->avr_step_fps_list)
+		return -ENOMEM;
+
+	rc = utils->read_u32_array(utils->data, "qcom,dsi-qsync-avr-step-list",
+			avr_caps->avr_step_fps_list, val);
+	if (rc) {
+		kfree(avr_caps->avr_step_fps_list);
+		return rc;
+	}
+
+	avr_caps->avr_step_fps_list_len = val;
+	return rc;
+}
+
 static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 				     struct device_node *of_node)
 {
@@ -2221,9 +2253,8 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 					      reset_gpio_name, 0);
 	if (!gpio_is_valid(panel->reset_config.reset_gpio) &&
 		!panel->host_config.ext_bridge_mode) {
-		rc = panel->reset_config.reset_gpio;
-		DSI_ERR("[%s] failed get reset gpio, rc=%d\n", panel->name, rc);
-		goto error;
+		DSI_DEBUG("[%s] reset gpio not set, rc=%d\n", panel->name,
+			panel->reset_config.reset_gpio);
 	}
 
 	panel->reset_config.disp_en_gpio = utils->get_named_gpio(utils->data,
@@ -2293,21 +2324,21 @@ static int dsi_panel_parse_tlmm_gpio(struct dsi_panel *panel)
 	u32 base, size, pin;
 	int pin_count, address_count, name_count, i;
 
-	address_count = of_property_count_u32_elems(utils->data,
+	address_count = utils->count_u32_elems(utils->data,
 				"qcom,dsi-panel-gpio-address");
 	if (address_count != 2) {
 		DSI_DEBUG("panel gpio address not defined\n");
 		return 0;
 	}
 
-	of_property_read_u32_index(utils->data,
+	utils->read_u32_index(utils->data,
 			"qcom,dsi-panel-gpio-address", 0, &base);
-	of_property_read_u32_index(utils->data,
+	utils->read_u32_index(utils->data,
 			"qcom,dsi-panel-gpio-address", 1, &size);
 
-	pin_count = of_property_count_u32_elems(utils->data,
+	pin_count = utils->count_u32_elems(utils->data,
 				"qcom,dsi-panel-gpio-pins");
-	name_count = of_property_count_strings(utils->data,
+	name_count = utils->count_strings(utils->data,
 				"qcom,dsi-panel-gpio-names");
 	if ((pin_count < 0) || (name_count < 0) || (pin_count != name_count)) {
 		DSI_ERR("invalid gpio pins/names\n");
@@ -2321,13 +2352,13 @@ static int dsi_panel_parse_tlmm_gpio(struct dsi_panel *panel)
 
 	panel->tlmm_gpio_count = pin_count;
 	for (i = 0; i < pin_count; i++) {
-		of_property_read_u32_index(utils->data,
+		utils->read_u32_index(utils->data,
 				"qcom,dsi-panel-gpio-pins", i, &pin);
 		panel->tlmm_gpio[i].num = pin;
 		panel->tlmm_gpio[i].addr = base + (pin * size);
 		panel->tlmm_gpio[i].size = size;
 
-		of_property_read_string_index(utils->data,
+		utils->read_string_index(utils->data,
 				"qcom,dsi-panel-gpio-names", i,
 				&(panel->tlmm_gpio[i].name));
 	}
@@ -2994,6 +3025,19 @@ static int dsi_panel_parse_topology(
 		goto parse_fail;
 	}
 
+	if (!(priv_info->dsc_enabled || priv_info->vdc_enabled) !=
+			!topology[top_sel].num_enc) {
+		DSI_ERR("topology and compression info mismatch dsc:%d vdc:%d num_enc:%d\n",
+			priv_info->dsc_enabled, priv_info->vdc_enabled,
+			topology[top_sel].num_enc);
+		goto parse_fail;
+	}
+
+	if (priv_info->dsc_enabled)
+		topology[top_sel].comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+	else if (priv_info->vdc_enabled)
+		topology[top_sel].comp_type = MSM_DISPLAY_COMPRESSION_VDC;
+
 	DSI_INFO("default topology: lm: %d comp_enc:%d intf: %d\n",
 		topology[top_sel].num_lm,
 		topology[top_sel].num_enc,
@@ -3436,6 +3480,7 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 		panel->panel_ops.bl_register = dsi_panel_vm_stub;
 		panel->panel_ops.bl_unregister = dsi_panel_vm_stub;
 		panel->panel_ops.parse_gpios = dsi_panel_vm_stub;
+		panel->panel_ops.parse_power_cfg = dsi_panel_vm_stub;
 	} else {
 		panel->panel_ops.pinctrl_init = dsi_panel_pinctrl_init;
 		panel->panel_ops.gpio_request = dsi_panel_gpio_request;
@@ -3444,6 +3489,7 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 		panel->panel_ops.bl_register = dsi_panel_bl_register;
 		panel->panel_ops.bl_unregister = dsi_panel_bl_unregister;
 		panel->panel_ops.parse_gpios = dsi_panel_parse_gpios;
+		panel->panel_ops.parse_power_cfg = dsi_panel_parse_power_cfg;
 	}
 }
 
@@ -3507,6 +3553,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_avr_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
+
 	rc = dsi_panel_parse_dyn_clk_caps(panel);
 	if (rc)
 		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
@@ -3530,7 +3580,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
-	rc = dsi_panel_parse_power_cfg(panel);
+	rc = panel->panel_ops.parse_power_cfg(panel);
 	if (rc)
 		DSI_ERR("failed to parse power config, rc=%d\n", rc);
 
@@ -3592,6 +3642,7 @@ void dsi_panel_put(struct dsi_panel *panel)
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
 
+	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
 }
 
@@ -3875,13 +3926,18 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	struct dsi_mode_info *timing = &mode->timing;
 	struct dsi_display_mode *display_mode;
 	u32 jitter_numer, jitter_denom, prefill_lines;
-	u32 min_threshold_us, prefill_time_us, max_transfer_us;
+	u32 min_threshold_us, prefill_time_us, max_transfer_us, packet_overhead;
 	u16 bpp;
 
-	/* Packet overlead in bits,2 bytes header + 2 bytes checksum
-	 * + 1 byte dcs data command.
+	/* Packet overhead in bits,
+	 * DPHY: 4 bytes header + 2 bytes checksum + 1 byte dcs data command.
+	 * CPHY: 8 bytes header + 4 bytes checksum + 2 bytes SYNC +
+	 * 1 byte dcs data command.
 	*/
-	const u32 packet_overhead = 56;
+	if (config->phy_type & DSI_PHY_TYPE_CPHY)
+		packet_overhead = 120;
+	else
+		packet_overhead = 56;
 
 	display_mode = container_of(timing, struct dsi_display_mode, timing);
 
@@ -4038,6 +4094,10 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		} else {
 			mode->panel_mode_caps = panel->panel_mode;
 		}
+
+		rc = utils->read_u32(utils->data, "cell-index", &mode->mode_idx);
+		if (rc)
+			mode->mode_idx = index;
 
 		rc = dsi_panel_parse_timing(&mode->timing, utils);
 		if (rc) {

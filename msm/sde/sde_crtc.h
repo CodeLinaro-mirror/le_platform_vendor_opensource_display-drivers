@@ -225,6 +225,30 @@ struct sde_crtc_misr_info {
 #define SDE_CRTC_MAX_EVENT_COUNT	16
 
 /**
+ * struct sde_frame_data_buffer - defines frame data buffer structure
+ * @fd: framebuffer id associated with this buffer
+ * @fb: drm framebuffer for the buffer
+ * @gem: drm gem handle for he buffer
+ */
+struct sde_frame_data_buffer {
+	u32 fd;
+	struct drm_framebuffer *fb;
+	struct drm_gem_object *gem;
+};
+
+/**
+ * struct sde_frame_data - defines sde frame data structure
+ * @idx : currently used frame data buffe
+ * @cnt : rnumber of available frame data buffers
+ * @buf : list of frame data buffers
+ */
+struct sde_frame_data {
+	u32 idx;
+	u32 cnt;
+	struct sde_frame_data_buffer *buf[SDE_FRAME_DATA_BUFFER_MAX];
+};
+
+/**
  * struct sde_crtc - virtualized CRTC data structure
  * @base          : Base drm crtc structure
  * @name          : ASCII description of this crtc
@@ -263,7 +287,8 @@ struct sde_crtc_misr_info {
  * @frame_pending : Whether or not an update is pending
  * @frame_events  : static allocation of in-flight frame events
  * @frame_event_list : available frame event list
- * @spin_lock     : spin lock for frame event, transaction status, etc...
+ * @spin_lock     : spin lock for transaction status, etc...
+ * @fevent_spin_lock     : spin lock for frame event
  * @event_thread  : Pointer to event handler thread
  * @event_worker  : Event worker queue
  * @event_cache   : Local cache of event worker structures
@@ -290,6 +315,7 @@ struct sde_crtc_misr_info {
  * @ltm_buffer_lock : muttx to protect ltm_buffers allcation and free
  * @ltm_lock        : Spinlock to protect ltm buffer_cnt, hist_en and ltm lists
  * @needs_hw_reset  : Initiate a hw ctl reset
+ * @hist_irq_idx    : hist interrupt irq idx
  * @src_bpp         : source bpp used to calculate compression ratio
  * @target_bpp      : target bpp used to calculate compression ratio
  * @static_cache_read_work: delayed worker to transition cache state to read
@@ -301,6 +327,7 @@ struct sde_crtc_misr_info {
  * @skip_blend_plane_w: skip blend plane width
  * @skip_blend_plane_h: skip blend plane height
  * @line_time_in_ns : current mode line time in nano sec is needed for QOS update
+ * @frame_data      : Framedata data structure
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -350,6 +377,7 @@ struct sde_crtc {
 	struct sde_crtc_frame_event frame_events[SDE_CRTC_FRAME_EVENT_SIZE];
 	struct list_head frame_event_list;
 	spinlock_t spin_lock;
+	spinlock_t fevent_spin_lock;
 
 	/* for handling internal event thread */
 	struct sde_crtc_event event_cache[SDE_CRTC_MAX_EVENT_COUNT];
@@ -383,6 +411,7 @@ struct sde_crtc {
 	struct mutex ltm_buffer_lock;
 	spinlock_t ltm_lock;
 	bool needs_hw_reset;
+	int hist_irq_idx;
 
 	int src_bpp;
 	int target_bpp;
@@ -398,6 +427,8 @@ struct sde_crtc {
 	u32 skip_blend_plane_w;
 	u32 skip_blend_plane_h;
 	u32 line_time_in_ns;
+
+	struct sde_frame_data frame_data;
 };
 
 enum sde_crtc_dirty_flags {

@@ -25,7 +25,7 @@
 #define TO_S15D16(_x_)	((_x_) << 7)
 
 #define SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg) \
-	(SDE_FORMAT_IS_UBWC(fmt) ? wb_cfg->sblk->maxlinewidth : \
+	((SDE_FORMAT_IS_UBWC(fmt) || SDE_FORMAT_IS_YUV(fmt)) ? wb_cfg->sblk->maxlinewidth : \
 	wb_cfg->sblk->maxlinewidth_linear)
 
 static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
@@ -922,6 +922,10 @@ static void _sde_encoder_phys_wb_update_cwb_flush(
 	enum sde_cwb src_pp_idx = 0;
 	bool dspp_out = false;
 	bool need_merge = false;
+	struct sde_connector *c_conn = NULL;
+	struct sde_connector_state *c_state = NULL;
+	void *dither_cfg = NULL;
+	size_t dither_sz = 0;
 
 	if (!phys_enc->in_clone_mode) {
 		SDE_DEBUG("not in CWB mode. early return\n");
@@ -976,11 +980,30 @@ static void _sde_encoder_phys_wb_update_cwb_flush(
 
 	if (test_bit(SDE_WB_CWB_CTRL, &hw_wb->caps->features) ||
 			test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
+		if (test_bit(SDE_WB_CWB_DITHER_CTRL, &hw_wb->caps->features)) {
+			if (cwb_capture_mode) {
+				c_conn = to_sde_connector(phys_enc->connector);
+				c_state = to_sde_connector_state(phys_enc->connector->state);
+				dither_cfg = msm_property_get_blob(&c_conn->property_info,
+						&c_state->property_state, &dither_sz,
+						CONNECTOR_PROP_PP_CWB_DITHER);
+				SDE_DEBUG("Read cwb dither setting from blob %pK\n", dither_cfg);
+			} else {
+				/* disable case: tap is lm */
+				dither_cfg = NULL;
+			}
+		}
+
 		for (i = 0; i < crtc->num_mixers; i++) {
 			src_pp_idx = (enum sde_cwb) (src_pp_idx + i);
 
 			if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 				dcwb_idx = (enum sde_dcwb) ((hw_pp->idx % 2) + i);
+				if (test_bit(SDE_WB_CWB_DITHER_CTRL, &hw_wb->caps->features)) {
+					if (hw_wb->ops.program_cwb_dither_ctrl)
+						hw_wb->ops.program_cwb_dither_ctrl(hw_wb,
+							dcwb_idx, dither_cfg, dither_sz, enable);
+				}
 				if (hw_wb->ops.program_dcwb_ctrl)
 					hw_wb->ops.program_dcwb_ctrl(hw_wb, dcwb_idx,
 						src_pp_idx, cwb_capture_mode,
@@ -1421,6 +1444,9 @@ static int _sde_encoder_phys_wb_wait_for_commit_done(
 		SDE_DEBUG("no output framebuffer\n");
 		_sde_encoder_phys_wb_frame_done_helper(wb_enc, false);
 	}
+
+	if (atomic_read(&phys_enc->pending_retire_fence_cnt) > 1)
+		wait_info.count_check = 1;
 
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_retire_fence_cnt;

@@ -24,6 +24,12 @@
 #define DSI_CLIENT_NAME_SIZE		20
 #define MAX_CMDLINE_PARAM_LEN	 512
 #define MAX_CMD_PAYLOAD_SIZE	256
+
+#define DSI_MODE_MATCH_ACTIVE_TIMINGS (1 << 0)
+#define DSI_MODE_MATCH_PORCH_TIMINGS (1 << 1)
+#define DSI_MODE_MATCH_FULL_TIMINGS (DSI_MODE_MATCH_ACTIVE_TIMINGS | DSI_MODE_MATCH_PORCH_TIMINGS)
+#define DSI_MODE_MATCH_DSC_CONFIG (1 << 2)
+
 /*
  * DSI Validate Mode modifiers
  * @DSI_VALIDATE_FLAG_ALLOW_ADJUST:	Allow mode validation to also do fixup
@@ -187,6 +193,7 @@ struct dsi_display_ext_bridge {
  * @is_active:        status of the display
  * @trusted_vm_env:   Set to true, it the executing VM is Trusted VM.
  *                    Set to false, otherwise.
+ * @hw_ownership:     Indicates if VM owns the hardware resources.
  * @tx_cmd_buf_ndx:   Index to the DSI debugfs TX CMD buffer.
  * @cmd_set:	      Debugfs TX cmd set.
  * @enabled:	      Boolean to indicate display enabled.
@@ -287,6 +294,7 @@ struct dsi_display {
 	bool is_active;
 
 	bool trusted_vm_env;
+	bool hw_ownership;
 
 	int tx_cmd_buf_ndx;
 	struct dsi_panel_cmd_set cmd_set;
@@ -417,21 +425,31 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm);
  * @display:            Handle to display.
  * @mode_fps:           Fps value of current mode
  *
- * Return: error code.
+ * Return: Qsync min fps rate or -ve error code.
  */
 int dsi_display_get_qsync_min_fps(void *dsi_display, u32 mode_fps);
 
+/**
+ * dsi_display_get_avr_step_req_fps() - get avr step rate for given fps
+ * @display:            Handle to display.
+ * @mode_fps:           Fps value of current mode
+ *
+ * Return: AVR step rate or -ve error code.
+ */
+int dsi_display_get_avr_step_req_fps(void *dsi_display, u32 mode_fps);
 
 /**
  * dsi_display_find_mode() - retrieve cached DSI mode given relevant params
  * @display:            Handle to display.
  * @cmp:                Mode to use as comparison to find original
+ * @sub_mode:           Additional mode info to drm display mode
  * @out_mode:           Output parameter, pointer to retrieved mode
  *
  * Return: error code.
  */
 int dsi_display_find_mode(struct dsi_display *display,
-		const struct dsi_display_mode *cmp,
+		struct dsi_display_mode *cmp,
+		struct msm_sub_mode *sub_mode,
 		struct dsi_display_mode **out_mode);
 /**
  * dsi_display_validate_mode() - validates if mode is supported by display
@@ -631,6 +649,14 @@ int dsi_dispaly_static_frame(struct dsi_display *display, bool enable);
 struct drm_panel *dsi_display_get_drm_panel(struct dsi_display *display);
 
 /**
+ * dsi_display_has_dsc_switch_support() - check if dsc switch is supported.
+ * @display:            Handle to display.
+ *
+ * Return: True of panel supports both dsc and non-dsc modes.
+ */
+bool dsi_display_has_dsc_switch_support(struct dsi_display *display);
+
+/**
  * dsi_display_enable_event() - enable interrupt based connector event
  * @connector:          Pointer to drm connector structure
  * @display:            Handle to display.
@@ -796,5 +822,14 @@ int dsi_display_update_dyn_bit_clk(struct dsi_display *display, struct dsi_displ
  */
 int dsi_display_restore_bit_clk(struct dsi_display *display, struct dsi_display_mode *mode);
 
+/**
+ * dsi_display_mode_match() - compares two dsi mode structures
+ * @mode1:       dsi_display_mode to be compared
+ * @mode2:       dsi_display_mode to be compared
+ * @match_flags: Values to compare
+ * Return: True if mode matches
+ */
+bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
+		struct dsi_display_mode *mode2, unsigned int match_flags);
 
 #endif /* _DSI_DISPLAY_H_ */

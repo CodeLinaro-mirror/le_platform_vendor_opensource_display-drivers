@@ -46,6 +46,7 @@
 #define SDE_HW_VER_660	SDE_HW_VER(6, 6, 0) /* holi */
 #define SDE_HW_VER_670	SDE_HW_VER(6, 7, 0) /* shima */
 #define SDE_HW_VER_700	SDE_HW_VER(7, 0, 0) /* lahaina */
+#define SDE_HW_VER_720	SDE_HW_VER(7, 2, 0) /* yupik */
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
@@ -71,6 +72,7 @@
 #define IS_HOLI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_660)
 #define IS_SHIMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_670)
 #define IS_LAHAINA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_700)
+#define IS_YUPIK_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_720)
 #define IS_WAIPIO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_810)
 
 #define SDE_HW_BLK_NAME_LEN	16
@@ -273,6 +275,7 @@ enum {
  * @SDE_SSPP_FP16_GC         FP16 GC color processing block support
  * @SDE_SSPP_FP16_CSC        FP16 CSC color processing block support
  * @SDE_SSPP_FP16_UNMULT     FP16 alpha unmult color processing block support
+ * @SDE_SSPP_UBWC_STATS:     Support for ubwc stats
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -309,6 +312,7 @@ enum {
 	SDE_SSPP_FP16_GC,
 	SDE_SSPP_FP16_CSC,
 	SDE_SSPP_FP16_UNMULT,
+	SDE_SSPP_UBWC_STATS,
 	SDE_SSPP_MAX
 };
 
@@ -427,6 +431,7 @@ enum {
  * @SDE_PINGPONG_DITHER_LUMA,    Dither sub-blocks and features
  * @SDE_PINGPONG_MERGE_3D,  Separate MERGE_3D block exists
  * @SDE_PINGPONG_CWB,           PP block supports CWB
+ * @SDE_PINGPONG_CWB_DITHER,    PP block supports CWB dither
  * @SDE_PINGPONG_MAX
  */
 enum {
@@ -439,6 +444,7 @@ enum {
 	SDE_PINGPONG_DITHER_LUMA,
 	SDE_PINGPONG_MERGE_3D,
 	SDE_PINGPONG_CWB,
+	SDE_PINGPONG_CWB_DITHER,
 	SDE_PINGPONG_MAX
 };
 
@@ -506,6 +512,7 @@ enum {
  * @SDE_INTF_STATUS             INTF block has INTF_STATUS register
  * @SDE_INTF_RESET_COUNTER      INTF block has frame/line counter reset support
  * @SDE_INTF_VSYNC_TIMESTAMP    INTF block has vsync timestamp logged
+ * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
  * @SDE_INTF_MAX
  */
 enum {
@@ -516,6 +523,7 @@ enum {
 	SDE_INTF_STATUS,
 	SDE_INTF_RESET_COUNTER,
 	SDE_INTF_VSYNC_TIMESTAMP,
+	SDE_INTF_AVR_STATUS,
 	SDE_INTF_MAX
 };
 
@@ -545,6 +553,7 @@ enum {
  * @SDE_WB_CROP             CWB supports cropping
  * @SDE_WB_CWB_CTRL         Separate CWB control is available for configuring
  * @SDE_WB_DCWB_CTRL        Separate DCWB control is available for configuring
+ * @SDE_WB_CWB_DITHER_CTRL  CWB dither is available for configuring
  * @SDE_WB_MAX              maximum value
  */
 enum {
@@ -569,6 +578,7 @@ enum {
 	SDE_WB_CROP,
 	SDE_WB_CWB_CTRL,
 	SDE_WB_DCWB_CTRL,
+	SDE_WB_CWB_DITHER_CTRL,
 	SDE_WB_MAX
 };
 
@@ -1050,6 +1060,7 @@ struct sde_sspp_cfg {
  * @dspp:              ID of connected DSPP, DSPP_MAX if unsupported
  * @pingpong:          ID of connected PingPong, PINGPONG_MAX if unsupported
  * @ds:                ID of connected DS, DS_MAX if unsupported
+ * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
  */
 struct sde_lm_cfg {
@@ -1058,6 +1069,7 @@ struct sde_lm_cfg {
 	u32 dspp;
 	u32 pingpong;
 	u32 ds;
+	bool dummy_mixer;
 	unsigned long lm_pair_mask;
 };
 
@@ -1483,11 +1495,14 @@ struct sde_perf_cfg {
  * @has_cwb_crop       CWB cropping is supported
  * @has_cwb_support    indicates if device supports primary capture through CWB
  * @has_dedicated_cwb_support    indicates if device supports dedicated path for CWB capture
+ * @has_cwb_dither     indicates if device supports cwb dither feature
  * @cwb_blk_off        CWB offset address
  * @cwb_blk_stride     offset between each CWB blk
  * @ubwc_version       UBWC feature version (0x0 for not supported)
  * @ubwc_bw_calc_version indicate how UBWC BW has to be calculated
+ * @skip_inline_rot_thresh    Skip inline rotation threshold
  * @has_idle_pc        indicate if idle power collapse feature is supported
+ * @allowed_dsc_reservation_switch  intf to which dsc reservation switch is supported
  * @wakeup_with_touch  indicate early wake up display with input touch event
  * @has_hdr            HDR feature support
  * @has_hdr_plus       HDR10+ feature support
@@ -1507,6 +1522,7 @@ struct sde_perf_cfg {
  * @has_3d_merge_reset Supports 3D merge reset
  * @has_decimation     Supports decimation
  * @has_trusted_vm_support	     Supported HW sharing with trusted VM
+ * @has_avr_step       Supports AVR with vsync alignment to a set step rate
  * @rc_lm_flush_override        Support Rounded Corner using layer mixer flush
  * @has_mixer_combined_alpha     Mixer has single register for FG & BG alpha
  * @vbif_disable_inner_outer_shareable     VBIF requires disabling shareables
@@ -1533,6 +1549,7 @@ struct sde_perf_cfg {
  * @has_vig_p010  indicates if vig pipe supports p010 format
  * @has_fp16      indicates if FP16 format is supported on SSPP pipes
  * @has_precise_vsync_ts  indicates if HW has vsyc timestamp logging capability
+ * @has_ubwc_stats: indicates if ubwc stats feature is supported
  * @mdss_hw_block_size  Max offset of MDSS_HW block (0 offset), used for debug
  * @inline_rot_formats formats supported by the inline rotator feature
  * @irq_offset_list     list of sde_intr_irq_offsets to initialize irq table
@@ -1569,11 +1586,14 @@ struct sde_mdss_cfg {
 	bool has_cwb_crop;
 	bool has_cwb_support;
 	bool has_dedicated_cwb_support;
+	bool has_cwb_dither;
 	u32 cwb_blk_off;
 	u32 cwb_blk_stride;
 	u32 ubwc_version;
 	u32 ubwc_bw_calc_version;
+	bool skip_inline_rot_threshold;
 	bool has_idle_pc;
+	u32 allowed_dsc_reservation_switch;
 	bool wakeup_with_touch;
 	u32 vbif_qos_nlvl;
 	u32 ts_prefill_rev;
@@ -1592,6 +1612,7 @@ struct sde_mdss_cfg {
 	bool has_base_layer;
 	bool has_demura;
 	bool has_trusted_vm_support;
+	bool has_avr_step;
 	bool rc_lm_flush_override;
 	u32 demura_supported[SSPP_MAX][2];
 	u32 qseed_sw_lib_rev;
@@ -1615,6 +1636,8 @@ struct sde_mdss_cfg {
 	bool has_vig_p010;
 	bool has_fp16;
 	bool has_precise_vsync_ts;
+	bool has_ubwc_stats;
+
 	u32 mdss_hw_block_size;
 	u32 mdss_count;
 	struct sde_mdss_base_cfg mdss[MAX_BLOCKS];

@@ -52,7 +52,7 @@ bool sde_encoder_is_dsc_merge(struct drm_encoder *drm_enc)
 		return false;
 
 	phys_enc = sde_enc->phys_encs[0];
-	if (phys_enc->hw_intf->cfg.split_link_en)
+	if (phys_enc && phys_enc->hw_intf && phys_enc->hw_intf->cfg.split_link_en)
 		return false;
 
 	topology = sde_connector_get_topology_name(drm_conn);
@@ -936,7 +936,8 @@ void sde_encoder_dce_disable(struct sde_encoder_virt *sde_enc)
 
 	comp_type = sde_enc->mode_info.comp_info.comp_type;
 
-	if (comp_type == MSM_DISPLAY_COMPRESSION_DSC)
+	if (comp_type == MSM_DISPLAY_COMPRESSION_DSC ||
+		sde_encoder_needs_dsc_disable(&sde_enc->base))
 		_dce_dsc_disable(sde_enc);
 	else if (comp_type == MSM_DISPLAY_COMPRESSION_VDC)
 		_dce_vdc_disable(sde_enc);

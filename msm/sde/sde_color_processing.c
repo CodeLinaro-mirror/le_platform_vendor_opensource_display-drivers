@@ -1004,6 +1004,12 @@ static struct drm_property_blob *_sde_cp_get_crtc_feature_data(u32 feature,
 	memset(hw_cfg, 0, sizeof(*hw_cfg));
 	*feature_enabled = false;
 
+	if (!property || !prop_node) {
+		DRM_ERROR("invalid feature:%d, property:%pK, prop_node:%pK\n",
+				feature, property, prop_node);
+		goto end;
+	}
+
 	if (property->flags & DRM_MODE_PROP_BLOB) {
 		blob = drm_property_lookup_blob(crtc->base.dev,
 				pstate->prop_val);
@@ -1036,7 +1042,7 @@ static struct drm_property_blob *_sde_cp_get_crtc_feature_data(u32 feature,
 	} else {
 		DRM_ERROR("property type is not supported\n");
 	}
-
+end:
 	return blob;
 }
 
@@ -1176,7 +1182,7 @@ static int _sde_cp_crtc_cache_blob_property(struct drm_crtc *crtc,
 	 */
 	blob = drm_property_lookup_blob(crtc->dev, val);
 	if (!blob) {
-		DRM_ERROR("invalid blob id %lld\n", val);
+		DRM_ERROR("invalid blob id %lld feature %d\n", val, prop_node->feature);
 		return -EINVAL;
 	}
 	if (blob->length != prop_node->prop_blob_sz) {
@@ -1503,7 +1509,7 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
 	struct sde_hw_dspp *hw_dspp = NULL;
 	struct sde_crtc_irq_info *node = NULL;
 	int i, irq_idx, ret = 0;
-	unsigned long flags;
+	unsigned long flags, state_flags;
 
 	if (!crtc_drm) {
 		DRM_ERROR("invalid crtc %pK\n", crtc_drm);
@@ -1533,12 +1539,13 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
 
 	spin_lock_irqsave(&sde_crtc->spin_lock, flags);
 	node = _sde_cp_get_intr_node(DRM_EVENT_HISTOGRAM, sde_crtc);
-	spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
 
-	if (!node)
+	if (!node) {
+		spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
 		return;
+	}
 
-	spin_lock_irqsave(&node->state_lock, flags);
+	spin_lock_irqsave(&node->state_lock, state_flags);
 	if (node->state == IRQ_DISABLED) {
 		ret = sde_core_irq_enable(kms, &irq_idx, 1);
 		if (ret)
@@ -1546,7 +1553,8 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
 		else
 			node->state = IRQ_ENABLED;
 	}
-	spin_unlock_irqrestore(&node->state_lock, flags);
+	spin_unlock_irqrestore(&node->state_lock, state_flags);
+	spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
 }
 
 static int _sde_cp_crtc_checkfeature(u32 feature,
@@ -1601,7 +1609,8 @@ static int _sde_cp_crtc_checkfeature(u32 feature,
 		hw_cfg.displayh = num_mixers *
 				sde_crtc_state->lm_roi[i].w;
 		hw_cfg.displayv = sde_crtc_state->lm_roi[i].h;
-
+		hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
+		hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 		DRM_DEBUG_DRIVER("check cp feature %d on mixer %d\n",
 				feature, hw_lm->idx - LM_0);
 		ret = check_feature(hw_dspp, &hw_cfg, sde_crtc);
@@ -1860,7 +1869,8 @@ static int _sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 			hw_cfg.displayh = hw_cfg.num_of_mixers *
 					sde_crtc_state->lm_roi[j].w;
 			hw_cfg.displayv = sde_crtc_state->lm_roi[j].h;
-
+			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
+			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
 			ret = check_pu_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret) {
 				DRM_ERROR("failed pu feature %d in mixer %d\n",
@@ -2387,7 +2397,8 @@ static int _sde_cp_flush_properties(struct drm_crtc *crtc)
 		cstate->cp_prop_values[feature].cp_node = 0;
 		cstate->cp_prop_values[feature].prop_val = 0;
 		SDE_EVT32(feature, val);
-		_sde_cp_crtc_cache_property(crtc, cstate, prop_node,
+		if (prop_node)
+			_sde_cp_crtc_cache_property(crtc, cstate, prop_node,
 					property, val);
 	}
 	cstate->cp_prop_cnt = 0;
@@ -2543,6 +2554,7 @@ void sde_cp_crtc_destroy_properties(struct drm_crtc *crtc)
 	}
 	sde_crtc->ltm_buffer_cnt = 0;
 	sde_crtc->ltm_hist_en = false;
+	sde_crtc->hist_irq_idx = -1;
 
 	mutex_destroy(&sde_crtc->crtc_cp_lock);
 	INIT_LIST_HEAD(&sde_crtc->cp_active_list);
@@ -2604,46 +2616,60 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	struct sde_hw_mixer *hw_lm;
 	struct sde_hw_dspp *hw_dspp;
 	feature_wrapper set_feature;
-	int i = 0, ret = 0;
+	int n = 0, i = 0, ret = 0;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	u32 num_mixers = sde_crtc->num_mixers;
+	enum sde_cp_crtc_features features[] = {
+		SDE_CP_CRTC_DSPP_DEMURA_INIT,
+		SDE_CP_CRTC_DSPP_RC_MASK
+	};
 
-	set_feature =
-		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT];
-	SDE_EVT32(num_mixers);
-	if (!set_feature)
-		return;
-
-	mutex_lock(&sde_crtc->crtc_cp_lock);
-	memset(&hw_cfg, 0, sizeof(hw_cfg));
-
-	for (i = 0; i < num_mixers; i++) {
-		hw_dspp = sde_crtc->mixers[i].hw_dspp;
-		if (!hw_dspp || i >= DSPP_MAX)
-			continue;
-		hw_cfg.dspp[i] = hw_dspp;
-	}
-
-	hw_cfg.payload = NULL;
-	for (i = 0; i < num_mixers && !ret; i++) {
-		hw_lm = sde_crtc->mixers[i].hw_lm;
-		hw_dspp = sde_crtc->mixers[i].hw_dspp;
-		if (!hw_lm) {
-			ret = -EINVAL;
+	for (n = 0; n < ARRAY_SIZE(features); n++) {
+		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
+			DRM_DEBUG("invalid feature:%d\n", features[n]);
 			continue;
 		}
-		hw_cfg.ctl = sde_crtc->mixers[i].hw_ctl;
-		hw_cfg.mixer_info = hw_lm;
-		hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
-		hw_cfg.displayv = hw_lm->cfg.out_height;
-		hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
-		hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
-		ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
-		if (ret)
-			break;
-		_sde_cp_dspp_flush_helper(sde_crtc, SDE_CP_CRTC_DSPP_DEMURA_INIT);
+
+		set_feature = set_crtc_feature_wrappers[features[n]];
+		if (!set_feature) {
+			DRM_DEBUG("unsupported feature:%d\n", features[n]);
+			continue;
+		}
+
+		SDE_EVT32(n, features[n], num_mixers);
+		DRM_DEBUG("Disable feature %d\n", features[n]);
+		mutex_lock(&sde_crtc->crtc_cp_lock);
+		memset(&hw_cfg, 0, sizeof(hw_cfg));
+
+		for (i = 0; i < num_mixers; i++) {
+			hw_dspp = sde_crtc->mixers[i].hw_dspp;
+			if (!hw_dspp || i >= DSPP_MAX)
+				continue;
+			hw_cfg.dspp[i] = hw_dspp;
+		}
+
+		hw_cfg.payload = NULL;
+		for (i = 0; i < num_mixers && !ret; i++) {
+			hw_lm = sde_crtc->mixers[i].hw_lm;
+			hw_dspp = sde_crtc->mixers[i].hw_dspp;
+			if (!hw_lm) {
+				ret = -EINVAL;
+				continue;
+			}
+			hw_cfg.ctl = sde_crtc->mixers[i].hw_ctl;
+			hw_cfg.mixer_info = hw_lm;
+			hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
+			hw_cfg.displayv = hw_lm->cfg.out_height;
+			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
+			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
+			ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
+			if (ret)
+				break;
+			_sde_cp_dspp_flush_helper(sde_crtc, features[n]);
+		}
+
+		mutex_unlock(&sde_crtc->crtc_cp_lock);
 	}
-	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }
 
 void sde_cp_crtc_clear(struct drm_crtc *crtc)
@@ -2685,6 +2711,7 @@ void sde_cp_crtc_clear(struct drm_crtc *crtc)
 	}
 	sde_crtc->ltm_buffer_cnt = 0;
 	sde_crtc->ltm_hist_en = false;
+	sde_crtc->hist_irq_idx = -1;
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 }
@@ -3519,45 +3546,20 @@ static void _sde_cp_hist_interrupt_cb(void *arg, int irq_idx)
 	struct sde_crtc *crtc = arg;
 	struct drm_crtc *crtc_drm = &crtc->base;
 	struct sde_hw_dspp *hw_dspp;
-	struct sde_kms *kms;
-	struct sde_crtc_irq_info *node = NULL;
+	u32 lock_hist = 1;
 	u32 i;
-	int ret = 0;
-	unsigned long flags;
-
-	/* disable histogram irq */
-	kms = get_kms(crtc_drm);
-	spin_lock_irqsave(&crtc->spin_lock, flags);
-	node = _sde_cp_get_intr_node(DRM_EVENT_HISTOGRAM, crtc);
-	spin_unlock_irqrestore(&crtc->spin_lock, flags);
-
-	if (!node) {
-		DRM_DEBUG_DRIVER("cannot find histogram event node in crtc\n");
-		return;
-	}
-
-	spin_lock_irqsave(&node->state_lock, flags);
-	if (node->state == IRQ_ENABLED) {
-		if (sde_core_irq_disable_nolock(kms, irq_idx)) {
-			DRM_ERROR("failed to disable irq %d, ret %d\n",
-				irq_idx, ret);
-			spin_unlock_irqrestore(&node->state_lock, flags);
-			return;
-		}
-		node->state = IRQ_DISABLED;
-	}
-	spin_unlock_irqrestore(&node->state_lock, flags);
 
 	/* lock histogram buffer */
 	for (i = 0; i < crtc->num_mixers; i++) {
 		hw_dspp = crtc->mixers[i].hw_dspp;
 		if (hw_dspp && hw_dspp->ops.lock_histogram)
-			hw_dspp->ops.lock_histogram(hw_dspp, NULL);
+			hw_dspp->ops.lock_histogram(hw_dspp, &lock_hist);
 	}
 
+	crtc->hist_irq_idx = irq_idx;
 	/* notify histogram event */
 	sde_crtc_event_queue(crtc_drm, _sde_cp_notify_hist_event,
-							NULL, true);
+						&crtc->hist_irq_idx, true);
 }
 
 static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
@@ -3567,11 +3569,13 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	struct drm_event event;
 	struct drm_msm_hist *hist_data;
 	struct sde_kms *kms;
-	int ret;
-	u32 i;
+	struct sde_crtc_irq_info *node = NULL;
+	unsigned long flags, state_flags;
+	int ret, irq_idx;
+	u32 i, lock_hist = 0;
 
-	if (!crtc_drm) {
-		DRM_ERROR("invalid crtc %pK\n", crtc_drm);
+	if (!crtc_drm || !arg) {
+		DRM_ERROR("invalid drm crtc %pK or arg %pK\n", crtc_drm, arg);
 		return;
 	}
 
@@ -3581,14 +3585,69 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 		return;
 	}
 
-	if (!crtc->hist_blob)
-		return;
-
 	kms = get_kms(crtc_drm);
 	if (!kms || !kms->dev) {
 		SDE_ERROR("invalid arg(s)\n");
 		return;
 	}
+
+	/* disable histogram irq */
+	spin_lock_irqsave(&crtc->spin_lock, flags);
+	node = _sde_cp_get_intr_node(DRM_EVENT_HISTOGRAM, crtc);
+
+	if (!node) {
+		spin_unlock_irqrestore(&crtc->spin_lock, flags);
+		DRM_DEBUG_DRIVER("cannot find histogram event node in crtc\n");
+		/* unlock histogram */
+		ret = pm_runtime_get_sync(kms->dev->dev);
+		if (ret < 0) {
+			SDE_ERROR("failed to enable power resource %d\n", ret);
+			SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+			return;
+		}
+		for (i = 0; i < crtc->num_mixers; i++) {
+			hw_dspp = crtc->mixers[i].hw_dspp;
+			if (hw_dspp && hw_dspp->ops.lock_histogram)
+				hw_dspp->ops.lock_histogram(hw_dspp,
+					&lock_hist);
+		}
+		pm_runtime_put_sync(kms->dev->dev);
+		return;
+	}
+
+	irq_idx = *(int *)arg;
+	spin_lock_irqsave(&node->state_lock, state_flags);
+	if (node->state == IRQ_ENABLED) {
+		ret = sde_core_irq_disable_nolock(kms, irq_idx);
+		if (ret) {
+			DRM_ERROR("failed to disable irq %d, ret %d\n",
+				irq_idx, ret);
+			spin_unlock_irqrestore(&node->state_lock, state_flags);
+			spin_unlock_irqrestore(&crtc->spin_lock, flags);
+			ret = pm_runtime_get_sync(kms->dev->dev);
+			if (ret < 0) {
+				SDE_ERROR("failed to enable power %d\n", ret);
+				SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+				return;
+			}
+
+			/* unlock histogram */
+			for (i = 0; i < crtc->num_mixers; i++) {
+				hw_dspp = crtc->mixers[i].hw_dspp;
+				if (hw_dspp && hw_dspp->ops.lock_histogram)
+					hw_dspp->ops.lock_histogram(hw_dspp,
+						&lock_hist);
+			}
+			pm_runtime_put_sync(kms->dev->dev);
+			return;
+		}
+		node->state = IRQ_DISABLED;
+	}
+	spin_unlock_irqrestore(&node->state_lock, state_flags);
+	spin_unlock_irqrestore(&crtc->spin_lock, flags);
+
+	if (!crtc->hist_blob)
+		return;
 
 	ret = pm_runtime_get_sync(kms->dev->dev);
 	if (ret < 0) {

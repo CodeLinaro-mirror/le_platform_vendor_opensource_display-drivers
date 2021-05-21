@@ -328,6 +328,7 @@ enum {
 	DITHER_OFF,
 	DITHER_LEN,
 	DITHER_VER,
+	CWB_DITHER,
 	PP_MERGE_3D_ID,
 	PP_PROP_MAX,
 };
@@ -838,6 +839,7 @@ static struct sde_prop_type pp_prop[] = {
 	{DITHER_OFF, "qcom,sde-dither-off", false, PROP_TYPE_U32_ARRAY},
 	{DITHER_LEN, "qcom,sde-dither-size", false, PROP_TYPE_U32},
 	{DITHER_VER, "qcom,sde-dither-version", false, PROP_TYPE_U32},
+	{CWB_DITHER, "qcom,sde-cwb-dither", false, PROP_TYPE_U32_ARRAY},
 	{PP_MERGE_3D_ID, "qcom,sde-pp-merge-3d-id", false, PROP_TYPE_U32_ARRAY},
 };
 
@@ -1936,6 +1938,9 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 				SSPP_MAX_PER_PIPE_BW_HIGH, i);
 		else
 			sblk->max_per_pipe_bw_high = sblk->max_per_pipe_bw;
+
+		if (sde_cfg->has_ubwc_stats)
+			set_bit(SDE_SSPP_UBWC_STATS, &sspp->features);
 	}
 }
 
@@ -2170,8 +2175,7 @@ void sde_hw_mixer_set_preference(struct sde_mdss_cfg *sde_cfg, u32 num_lm,
 	}
 }
 
-static int sde_mixer_parse_dt(struct device_node *np,
-						struct sde_mdss_cfg *sde_cfg)
+static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 {
 	int rc = 0, i, j;
 	u32 off_count, blend_off_count, max_blendstages, lm_pair_mask;
@@ -2285,6 +2289,7 @@ static int sde_mixer_parse_dt(struct device_node *np,
 			if (mixer->base == dummy_mixer_base) {
 				mixer->base = 0x0;
 				mixer->len = 0;
+				mixer->dummy_mixer = true;
 			}
 		}
 
@@ -2431,6 +2436,7 @@ static int sde_intf_parse_dt(struct device_node *np,
 			set_bit(SDE_INTF_WD_TIMER, &intf->features);
 			set_bit(SDE_INTF_RESET_COUNTER, &intf->features);
 			set_bit(SDE_INTF_VSYNC_TIMESTAMP, &intf->features);
+			set_bit(SDE_INTF_AVR_STATUS, &intf->features);
 		}
 	}
 
@@ -2547,6 +2553,10 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 				sde_cfg->cwb_blk_off = 0x83000;
 				sde_cfg->cwb_blk_stride = 0x100;
 			}
+
+			if (sde_cfg->has_cwb_dither)
+				set_bit(SDE_WB_CWB_DITHER_CTRL, &wb->features);
+
 		} else if (sde_cfg->has_cwb_support) {
 			set_bit(SDE_WB_HAS_CWB, &wb->features);
 			if (IS_SDE_CTL_REV_100(sde_cfg->ctl_rev))
@@ -3841,6 +3851,11 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 		sblk->dither.version = PROP_VALUE_ACCESS(prop_value, DITHER_VER,
 								0);
 
+		if (sde_cfg->has_cwb_dither &&
+			PROP_VALUE_ACCESS(prop_value, CWB_DITHER, i)) {
+			set_bit(SDE_PINGPONG_CWB_DITHER, &pp->features);
+		}
+
 		if (sde_cfg->dither_luma_mode_support)
 			set_bit(SDE_PINGPONG_DITHER_LUMA, &pp->features);
 
@@ -5029,7 +5044,9 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->has_trusted_vm_support = true;
 		sde_cfg->syscache_supported = true;
 	} else if (IS_WAIPIO_TARGET(hw_rev)) {
+		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->has_dedicated_cwb_support = true;
+		sde_cfg->has_cwb_dither = true;
 		sde_cfg->has_wb_ubwc = true;
 		sde_cfg->has_cwb_crop = true;
 		sde_cfg->has_qsync = true;
@@ -5044,6 +5061,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->has_3d_merge_reset = true;
 		sde_cfg->has_hdr = true;
 		sde_cfg->has_hdr_plus = true;
+		sde_cfg->skip_inline_rot_threshold = true;
 		set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
 		sde_cfg->has_vig_p010 = true;
 		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
@@ -5056,6 +5074,36 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->has_fp16 = true;
 		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 		sde_cfg->has_precise_vsync_ts = true;
+		sde_cfg->has_avr_step = true;
+		sde_cfg->has_trusted_vm_support = true;
+		sde_cfg->has_ubwc_stats = true;
+		sde_cfg->has_demura = true;
+		sde_cfg->demura_supported[SSPP_DMA1][0] = 0;
+		sde_cfg->demura_supported[SSPP_DMA1][1] = 1;
+		sde_cfg->demura_supported[SSPP_DMA3][0] = 0;
+		sde_cfg->demura_supported[SSPP_DMA3][1] = 1;
+	} else if (IS_YUPIK_TARGET(hw_rev)) {
+		sde_cfg->has_cwb_support = true;
+		sde_cfg->has_qsync = true;
+		sde_cfg->perf.min_prefill_lines = 40;
+		sde_cfg->vbif_qos_nlvl = 8;
+		sde_cfg->ts_prefill_rev = 2;
+		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+		sde_cfg->delay_prg_fetch_start = true;
+		sde_cfg->sui_ns_allowed = true;
+		sde_cfg->sui_misr_supported = true;
+		sde_cfg->sui_block_xin_mask = 0x261;
+		sde_cfg->has_sui_blendstage = true;
+		sde_cfg->has_3d_merge_reset = true;
+		sde_cfg->has_hdr = true;
+		sde_cfg->has_hdr_plus = true;
+		set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+		sde_cfg->has_vig_p010 = true;
+		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_0;
+		sde_cfg->vbif_disable_inner_outer_shareable = true;
+		sde_cfg->dither_luma_mode_support = true;
+		sde_cfg->mdss_hw_block_size = 0x158;
+		sde_cfg->rc_lm_flush_override = false;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;
