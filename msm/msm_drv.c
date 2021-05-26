@@ -393,7 +393,6 @@ static int msm_drm_uninit(struct device *dev)
 	if (kms && kms->funcs)
 		kms->funcs->debugfs_destroy(kms);
 
-	sde_dbg_destroy();
 	debugfs_remove_recursive(priv->debug_root);
 	drm_mode_config_cleanup(ddev);
 
@@ -422,8 +421,6 @@ static int msm_drm_uninit(struct device *dev)
 	component_unbind_all(dev, ddev);
 	pm_runtime_put_sync(dev);
 
-	sde_power_resource_deinit(pdev, &priv->phandle);
-
 	mutex_lock(&priv->vm_client_lock);
 
 	/* clean up any unregistered clients */
@@ -437,11 +434,7 @@ static int msm_drm_uninit(struct device *dev)
 
 	msm_mdss_destroy(ddev);
 
-	ddev->dev_private = NULL;
 	destroy_workqueue(priv->wq);
-	kfree(priv);
-
-	drm_dev_put(ddev);
 
 	return 0;
 }
@@ -793,6 +786,19 @@ priv_alloc_fail:
 	return ret;
 }
 
+static int msm_drm_device_deinit(struct platform_device *pdev)
+{
+	struct drm_device *ddev = platform_get_drvdata(pdev);
+	struct msm_drm_private *priv = ddev->dev_private;
+
+	sde_dbg_destroy();
+	sde_power_resource_deinit(pdev, &priv->phandle);
+	drm_dev_put(ddev);
+	kfree(priv);
+
+	return 0;
+}
+
 static int msm_drm_component_init(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -921,11 +927,6 @@ fail:
 bind_fail:
 	msm_mdss_destroy(ddev);
 mdss_init_fail:
-	sde_dbg_destroy();
-	sde_power_resource_deinit(pdev, &priv->phandle);
-	drm_dev_put(ddev);
-	kfree(priv);
-
 	return ret;
 }
 
@@ -2095,6 +2096,8 @@ static int msm_pdev_probe(struct platform_device *pdev)
 
 static int msm_pdev_remove(struct platform_device *pdev)
 {
+	msm_drm_device_deinit(pdev);
+
 	component_master_del(&pdev->dev, &msm_drm_ops);
 	of_platform_depopulate(&pdev->dev);
 
