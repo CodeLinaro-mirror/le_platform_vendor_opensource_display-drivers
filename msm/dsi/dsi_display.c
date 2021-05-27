@@ -4140,7 +4140,8 @@ error:
 static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 {
 	if (!is_sim_panel(display)) {
-		if (!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
+		if (!display->panel->host_config.ext_bridge_mode &&
+				!gpio_is_valid(display->panel->reset_config.reset_gpio)) {
 			DSI_ERR("invalid reset gpio for the panel\n");
 			return false;
 		}
@@ -5822,13 +5823,17 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			_dsi_display_dev_deinit(display);
+			goto end;
 		}
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		_dsi_display_dev_deinit(display);
+		goto end;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
 end:
