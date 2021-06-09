@@ -1,13 +1,6 @@
-/* Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -245,6 +238,11 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	rm = &phys_enc->sde_kms->rm;
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
 
+	/* skip if resources already exist */
+	sde_rm_init_hw_iter(&ctl_iter, DRMID(phys_enc->parent), SDE_HW_BLK_CTL);
+	if (sde_rm_atomic_get_hw(rm, state, &ctl_iter))
+		return 0;
+
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
@@ -303,8 +301,8 @@ static int _sde_encoder_phys_shd_rm_reserve(
 		hw_roi_misr = container_of(shd_enc->hw_roi_misr[i],
 				struct sde_shd_hw_roi_misr, base);
 		hw_roi_misr->base = *(struct sde_hw_roi_misr *)roi_misr_iter.hw;
-		hw_roi_misr->range = display->roi_range;
 		hw_roi_misr->orig = roi_misr_iter.hw;
+		sde_shd_hw_roi_misr_init_op(&hw_roi_misr->base);
 
 		SDE_DEBUG("reserve ROI_MISR%d from enc %d to %d\n",
 			hw_roi_misr->base.idx,
@@ -399,7 +397,6 @@ static void sde_encoder_phys_shd_mode_set(
 	struct drm_encoder *encoder;
 	struct sde_rm_hw_iter iter;
 	struct sde_rm *rm;
-	uint64_t top_name;
 	int i;
 
 	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
@@ -466,13 +463,6 @@ static void sde_encoder_phys_shd_mode_set(
 	}
 
 	_sde_encoder_phys_shd_setup_irq_hw_idx(phys_enc);
-
-	/* update to base connector's topology name */
-	top_name = sde_connector_get_topology_name(display->base->connector);
-	msm_property_set_property(
-			sde_connector_get_propinfo(connector),
-			sde_connector_get_property_state(connector->state),
-			CONNECTOR_PROP_TOPOLOGY_NAME, top_name);
 }
 
 static int _sde_encoder_phys_shd_wait_for_vblank(
@@ -566,7 +556,8 @@ void sde_encoder_phys_shd_trigger_flush(
 	shd_enc = container_of(phys_enc, struct sde_encoder_phys_shd, base);
 
 	sde_shd_hw_flush(phys_enc->hw_ctl,
-			shd_enc->hw_lm, shd_enc->num_mixers);
+			shd_enc->hw_lm, shd_enc->num_mixers,
+			shd_enc->hw_roi_misr, shd_enc->num_roi_misrs);
 }
 
 static int sde_encoder_phys_shd_control_vblank_irq(
@@ -762,7 +753,8 @@ int sde_encoder_phys_shd_atomic_check(struct sde_encoder_phys *phys_enc,
 {
 	struct shd_display *display;
 
-	if (!phys_enc || !crtc_state || !conn_state || !conn_state->state) {
+	if (!phys_enc || !crtc_state || !conn_state || !conn_state->state ||
+			!conn_state->connector) {
 		SDE_ERROR("invalid encoder/device\n");
 		return -EINVAL;
 	}
