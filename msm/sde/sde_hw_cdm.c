@@ -334,7 +334,7 @@ struct sde_hw_cdm *sde_hw_cdm_init(enum sde_cdm idx,
 		goto blk_init_error;
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	/*

@@ -776,7 +776,7 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	return ret;
 
 pm_runtime_error:
-	sde_dbg_destroy();
+	sde_dbg_destroy(dev);
 dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
@@ -791,7 +791,7 @@ static int msm_drm_device_deinit(struct platform_device *pdev)
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = ddev->dev_private;
 
-	sde_dbg_destroy();
+	sde_dbg_destroy(ddev->dev);
 	sde_power_resource_deinit(pdev, &priv->phandle);
 	drm_dev_put(ddev);
 	kfree(priv);

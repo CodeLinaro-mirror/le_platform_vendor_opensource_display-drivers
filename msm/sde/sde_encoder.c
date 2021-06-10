@@ -3312,8 +3312,8 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 	trace_sde_encoder_underrun(DRMID(drm_enc),
 		atomic_read(&phy_enc->underrun_cnt));
 
-	SDE_DBG_CTRL("stop_ftrace");
-	SDE_DBG_CTRL("panic_underrun");
+	SDE_DBG_CTRL(drm_enc->dev, "stop_ftrace");
+	SDE_DBG_CTRL(drm_enc->dev, "panic_underrun");
 
 	SDE_ATRACE_END("encoder_underrun_callback");
 }
@@ -3669,7 +3669,7 @@ void sde_encoder_helper_hw_reset(struct sde_encoder_phys *phys_enc)
 			if (rc) {
 				SDE_ERROR_ENC(sde_enc,
 						"connector soft reset failure\n");
-				SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL, "panic");
+				SDE_DBG_DUMP(sde_enc->base.dev, SDE_DBG_BUILT_IN_ALL, "panic");
 			}
 		}
 	}

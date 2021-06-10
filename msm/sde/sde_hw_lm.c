@@ -435,7 +435,7 @@ struct sde_hw_mixer *sde_hw_lm_init(enum sde_lm idx,
 
 	_setup_mixer_ops(m, &c->ops, c->cap->features);
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	return c;

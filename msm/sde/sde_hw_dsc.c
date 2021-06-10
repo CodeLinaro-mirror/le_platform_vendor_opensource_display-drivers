@@ -240,7 +240,7 @@ struct sde_hw_dsc *sde_hw_dsc_init(enum sde_dsc idx,
 	c->caps = cfg;
 	if (test_bit(SDE_DSC_HW_REV_1_1, &c->caps->features)) {
 		_setup_dsc_ops(&c->ops, c->caps->features);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 				c->hw.blk_off,
 				c->hw.blk_off + c->hw.length,
 				c->hw.xin_id);
@@ -248,7 +248,7 @@ struct sde_hw_dsc *sde_hw_dsc_init(enum sde_dsc idx,
 		if ((c->idx == DSC_0) &&
 				test_bit(SDE_DSC_OUTPUT_CTRL, &cfg->features)) {
 			dsc_ctl_offset = DSC_CTL(c->idx);
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+			sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 					"dsc_ctl",
 					c->hw.blk_off + dsc_ctl_offset,
 					c->hw.blk_off + dsc_ctl_offset +
@@ -260,7 +260,7 @@ struct sde_hw_dsc *sde_hw_dsc_init(enum sde_dsc idx,
 
 		sde_dsc1_2_setup_ops(&c->ops, c->caps->features);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 				c->hw.blk_off,
 				c->hw.blk_off + c->hw.length,
 				c->hw.xin_id);
@@ -268,7 +268,7 @@ struct sde_hw_dsc *sde_hw_dsc_init(enum sde_dsc idx,
 		snprintf(blk_name, sizeof(blk_name), "dsc_enc_%u",
 				c->idx - DSC_0);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 				blk_name,
 				c->hw.blk_off + c->caps->sblk->enc.base,
 				c->hw.blk_off + c->caps->sblk->enc.base +
@@ -278,7 +278,7 @@ struct sde_hw_dsc *sde_hw_dsc_init(enum sde_dsc idx,
 		snprintf(blk_name, sizeof(blk_name), "dsc_ctl_%u",
 				c->idx - DSC_0);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 				blk_name,
 				c->hw.blk_off + c->caps->sblk->ctl.base,
 				c->hw.blk_off + c->caps->sblk->ctl.base +

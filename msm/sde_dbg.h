@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
+#include <drm/drm_device.h>
 
 /* select an uncommon hex value for the limiter */
 #define SDE_EVTLOG_DATA_LIMITER	(0xC0DEBEEF)
@@ -236,7 +237,7 @@ extern struct sde_dbg_reglog *sde_dbg_base_reglog;
  *		Including the special name "panic" will trigger a panic after
  *		the dumping work has completed.
  */
-#define SDE_DBG_DUMP(dump_blk_mask, ...) sde_dbg_dump(SDE_DBG_DUMP_PROC_CTX, __func__, \
+#define SDE_DBG_DUMP(dev, dump_blk_mask, ...) sde_dbg_dump(dev, SDE_DBG_DUMP_PROC_CTX, __func__, \
 		dump_blk_mask, ##__VA_ARGS__, SDE_DBG_DUMP_DATA_LIMITER)
 
 /**
@@ -248,8 +249,8 @@ extern struct sde_dbg_reglog *sde_dbg_base_reglog;
  *		Including the special name "panic" will trigger a panic after
  *		the dumping work has completed.
  */
-#define SDE_DBG_DUMP_WQ(dump_blk_mask, ...) sde_dbg_dump(SDE_DBG_DUMP_IRQ_CTX, __func__, \
-		dump_blk_mask, ##__VA_ARGS__, SDE_DBG_DUMP_DATA_LIMITER)
+#define SDE_DBG_DUMP_WQ(dev, dump_blk_mask, ...) sde_dbg_dump(dev, SDE_DBG_DUMP_IRQ_CTX, \
+		__func__, dump_blk_mask, ##__VA_ARGS__, SDE_DBG_DUMP_DATA_LIMITER)
 
 /**
  * SDE_DBG_DUMP_CLK_EN - trigger dumping of all sde_dbg facilities, without clk
@@ -260,14 +261,15 @@ extern struct sde_dbg_reglog *sde_dbg_base_reglog;
  *		Including the special name "panic" will trigger a panic after
  *		the dumping work has completed.
  */
-#define SDE_DBG_DUMP_CLK_EN(dump_blk_mask, ...) sde_dbg_dump(SDE_DBG_DUMP_CLK_ENABLED_CTX, \
+#define SDE_DBG_DUMP_CLK_EN(dev, dump_blk_mask, ...) sde_dbg_dump(dev, \
+		SDE_DBG_DUMP_CLK_ENABLED_CTX, \
 		__func__, dump_blk_mask, ##__VA_ARGS__, SDE_DBG_DUMP_DATA_LIMITER)
 
 /**
  * SDE_DBG_EVT_CTRL - trigger a different driver events
  *  event: event that trigger different behavior in the driver
  */
-#define SDE_DBG_CTRL(...) sde_dbg_ctrl(__func__, ##__VA_ARGS__, \
+#define SDE_DBG_CTRL(dev, ...) sde_dbg_ctrl(dev, __func__, ##__VA_ARGS__, \
 		SDE_DBG_DUMP_DATA_LIMITER)
 
 /**
@@ -351,27 +353,28 @@ ssize_t sde_evtlog_dump_to_buffer(struct sde_dbg_evtlog *evtlog,
  * sde_dbg_init_dbg_buses - initialize debug bus dumping support for the chipset
  * @hwversion:		Chipset revision
  */
-void sde_dbg_init_dbg_buses(u32 hwversion);
+void sde_dbg_init_dbg_buses(struct drm_device *dev, u32 hwversion);
 
 /**
- * sde_dbg_init - initialize global sde debug facilities: evtlog, regdump
- * @dev:		device handle
+ * sde_dbg_init - initialize sde debug facilities: evtlog, regdump
+ * @dev:		pointer of device
  * Returns:		0 or -ERROR
  */
 int sde_dbg_init(struct device *dev);
 
 /**
  * sde_dbg_debugfs_register - register entries at the given debugfs dir
- * @dev:	pointer to device
+ * @dev:	pointer of device
  * Returns:	0 or -ERROR
  */
 int sde_dbg_debugfs_register(struct device *dev);
 
 /**
- * sde_dbg_destroy - destroy the global sde debug facilities
+ * sde_dbg_destroy - destroy the sde debug facilities
+ * @dev:	pointer of device
  * Returns:	none
  */
-void sde_dbg_destroy(void);
+void sde_dbg_destroy(struct device *dev);
 
 /**
  * sde_dbg_dump - trigger dumping of all sde_dbg facilities
@@ -385,7 +388,8 @@ void sde_dbg_destroy(void);
  *		the dumping work has completed.
  * Returns:	none
  */
-void sde_dbg_dump(enum sde_dbg_dump_context mode, const char *name, u64 dump_blk_mask, ...);
+void sde_dbg_dump(struct drm_device *dev, enum sde_dbg_dump_context mode,
+		const char *name, u64 dump_blk_mask, ...);
 
 /**
  * sde_dbg_ctrl - trigger specific actions for the driver with debugging
@@ -394,12 +398,13 @@ void sde_dbg_dump(enum sde_dbg_dump_context mode, const char *name, u64 dump_blk
  * @va_args:	list of actions to trigger
  * Returns:	none
  */
-void sde_dbg_ctrl(const char *name, ...);
+void sde_dbg_ctrl(struct drm_device *dev, const char *name, ...);
 
 /**
  * sde_dbg_reg_register_base - register a hw register address section for later
  *	dumping. call this before calling sde_dbg_reg_register_dump_range
  *	to be able to specify sub-ranges within the base hw range.
+ * @dev:	pointer of drm device
  * @name:	name of base region
  * @base:	base pointer of region
  * @max_offset:	length of region
@@ -407,33 +412,38 @@ void sde_dbg_ctrl(const char *name, ...);
  * @blk_id:	hw block id
  * Returns:	0 or -ERROR
  */
-int sde_dbg_reg_register_base(const char *name, void __iomem *base,
+int sde_dbg_reg_register_base(struct drm_device *dev, const char *name, void __iomem *base,
 		size_t max_offset, unsigned long phys_addr, u64 blk_id);
 
 /**
  * sde_dbg_reg_register_cb - register a hw register callback for later
  *	dumping.
+ * @dev:	pointer of drm device
  * @name:	name of base region
  * @cb:		callback of external region
  * @cb_ptr:	private pointer of external region
  * Returns:	0 or -ERROR
  */
-int sde_dbg_reg_register_cb(const char *name, void (*cb)(void *), void *ptr);
+int sde_dbg_reg_register_cb(struct drm_device *dev, const char *name,
+		void (*cb)(void *), void *ptr);
 
 /**
  * sde_dbg_reg_unregister_cb - register a hw unregister callback for later
  *	dumping.
+ * @dev:	pointer of drm device
  * @name:	name of base region
  * @cb:		callback of external region
  * @cb_ptr:	private pointer of external region
  * Returns:	None
  */
-void sde_dbg_reg_unregister_cb(const char *name, void (*cb)(void *), void *ptr);
+void sde_dbg_reg_unregister_cb(struct drm_device *dev, const char *name,
+		void (*cb)(void *), void *ptr);
 
 /**
  * sde_dbg_reg_register_dump_range - register a hw register sub-region for
  *	later register dumping associated with base specified by
  *	sde_dbg_reg_register_base
+ * @dev:		pointer of drm device
  * @base_name:		name of base region
  * @range_name:		name of sub-range within base region
  * @offset_start:	sub-range's start offset from base's base pointer
@@ -441,30 +451,33 @@ void sde_dbg_reg_unregister_cb(const char *name, void (*cb)(void *), void *ptr);
  * @xin_id:		xin id
  * Returns:		none
  */
-void sde_dbg_reg_register_dump_range(const char *base_name,
+void sde_dbg_reg_register_dump_range(struct drm_device *dev, const char *base_name,
 		const char *range_name, u32 offset_start, u32 offset_end,
 		uint32_t xin_id);
 
 /**
  * sde_dbg_dsi_ctrl_register - register a dsi ctrl for debugbus dumping
+ * @dev:	pointer of drm device
  * @base:	iomem base address for dsi controller
  * @name:	name of the dsi controller
  * Returns:	0 or -ERROR
  */
-int sde_dbg_dsi_ctrl_register(void __iomem *base, const char *name);
+int sde_dbg_dsi_ctrl_register(struct drm_device *dev, void __iomem *base, const char *name);
 
 /**
  * sde_dbg_set_sde_top_offset - set the target specific offset from mdss base
  *	address of the top registers. Used for accessing debug bus controls.
+ * @dev: pointer of drm device
  * @blk_off: offset from mdss base of the top block
  */
-void sde_dbg_set_sde_top_offset(u32 blk_off);
+void sde_dbg_set_sde_top_offset(struct drm_device *dev, u32 blk_off);
 
 /**
  * sde_dbg_set_hw_ownership_status - set the VM HW ownership status
+ * @dev: pointer of drm device
  * @enable:	flag to control HW ownership status
  */
-void sde_dbg_set_hw_ownership_status(bool enable);
+void sde_dbg_set_hw_ownership_status(struct drm_device *dev, bool enable);
 
 /**
  * sde_evtlog_set_filter - update evtlog filtering
@@ -485,15 +498,16 @@ int sde_evtlog_get_filter(struct sde_dbg_evtlog *evtlog, int index,
 		char *buf, size_t bufsz);
 
 #ifndef CONFIG_DRM_SDE_RSC
-static inline void sde_rsc_debug_dump(u32 mux_sel)
+static inline void sde_rsc_debug_dump(struct drm_device *dev, u32 mux_sel)
 {
 }
 #else
 /**
  * sde_rsc_debug_dump - sde rsc debug dump status
+ * @dev: pointer of drm device
  * @mux_sel:»       select mux on rsc debug bus
  */
-void sde_rsc_debug_dump(u32 mux_sel);
+void sde_rsc_debug_dump(struct drm_device *dev, u32 mux_sel);
 #endif
 
 #endif /* SDE_DBG_H_ */
