@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde-hdcp-2x] %s: " fmt, __func__
@@ -72,6 +72,7 @@ struct sde_hdcp_2x_ctrl {
 	u8 min_enc_level;
 	struct list_head stream_handles;
 	u8 stream_count;
+	u8 rx_info[2];
 
 	struct task_struct *thread;
 	struct completion response_completion;
@@ -546,6 +547,18 @@ static void sde_hdcp_2x_initialize_command(struct sde_hdcp_2x_ctrl *hdcp,
 		cdata->buf = hdcp->app_data.request.data + 1;
 }
 
+static void sde_hdcp_2x_send_rx_info(struct sde_hdcp_2x_ctrl *hdcp)
+{
+	struct hdcp_transport_wakeup_data cdata = {
+		HDCP_TRANSPORT_CMD_INVALID };
+
+	cdata.context = hdcp->client_data;
+	cdata.cmd = HDCP_TRANSPORT_CMD_RX_INFO;
+	cdata.buf_len = sizeof(hdcp->rx_info);
+	cdata.buf = hdcp->rx_info;
+	sde_hdcp_2x_wakeup_client(hdcp, &cdata);
+}
+
 static void sde_hdcp_2x_set_hw_key(struct sde_hdcp_2x_ctrl *hdcp)
 {
 	int rc;
@@ -568,11 +581,24 @@ static void sde_hdcp_2x_set_hw_key(struct sde_hdcp_2x_ctrl *hdcp)
 	hdcp->authenticated = true;
 	pr_debug("authenticated\n");
 
-	if (hdcp->force_encryption)
-		hdcp2_force_encryption(hdcp->hdcp2_ctx, 1);
-
 	cdata.cmd = HDCP_TRANSPORT_CMD_STATUS_SUCCESS;
 	sde_hdcp_2x_wakeup_client(hdcp, &cdata);
+}
+
+static void sde_hdcp_set_forced_encryption(struct sde_hdcp_2x_ctrl *hdcp)
+{
+	struct hdcp_transport_wakeup_data cdata = {
+						HDCP_TRANSPORT_CMD_INVALID };
+	cdata.context = hdcp->client_data;
+	if (hdcp->force_encryption) {
+		hdcp2_force_encryption(hdcp->hdcp2_ctx, 1);
+		sde_hdcp_2x_initialize_command(hdcp,
+				HDCP_TRANSPORT_CMD_FORCED_ENCRYPTION,
+				&cdata);
+		sde_hdcp_2x_wakeup_client(hdcp, &cdata);
+	} else {
+		hdcp2_force_encryption(hdcp->hdcp2_ctx, 0);
+	}
 }
 
 static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
@@ -581,10 +607,16 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 						HDCP_TRANSPORT_CMD_INVALID };
 	cdata.context = hdcp->client_data;
 
+	if (atomic_read(&hdcp->hdcp_off)) {
+		pr_debug("invalid state, hdcp off\n");
+		return;
+	}
+
 	switch (hdcp->app_data.response.data[0]) {
 	case SKE_SEND_TYPE_ID:
 		sde_hdcp_2x_set_hw_key(hdcp);
 
+		sde_hdcp_set_forced_encryption(hdcp);
 		/* poll for link check */
 		sde_hdcp_2x_initialize_command(hdcp,
 				HDCP_TRANSPORT_CMD_LINK_POLL, &cdata);
@@ -788,6 +820,7 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 
 		sde_hdcp_2x_set_hw_key(hdcp);
 
+		sde_hdcp_set_forced_encryption(hdcp);
 		sde_hdcp_2x_initialize_command(hdcp,
 				HDCP_TRANSPORT_CMD_LINK_POLL, &cdata);
 		goto exit;
@@ -797,6 +830,11 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 	if (msg[0] == LC_SEND_L_PRIME && out_msg == LC_INIT) {
 		pr_debug("resend %s\n", sde_hdcp_2x_message_name(out_msg));
 		hdcp->resend_lc_init = true;
+	}
+
+	if (msg[0] == REP_SEND_RECV_ID_LIST) {
+		memcpy(hdcp->rx_info, &msg[1], 2);
+		sde_hdcp_2x_send_rx_info(hdcp);
 	}
 
 	if (msg[0] == REP_STREAM_READY && out_msg == REP_STREAM_MANAGE)

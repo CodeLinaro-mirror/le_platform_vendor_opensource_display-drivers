@@ -872,6 +872,44 @@ static const struct attribute_group *sde_crtc_attr_groups[] = {
 	NULL,
 };
 
+static void sde_crtc_post_commit_init(struct sde_crtc *sde_crtc)
+{
+	struct sde_kms *kms = _sde_crtc_get_kms(&sde_crtc->base);
+
+	sde_post_commit_fence_ctx_init(
+			&sde_crtc->post_commit_fence_ctx,
+			sde_crtc->name,
+			&sde_crtc->output_fence->done_count);
+
+	if (kms && kms->catalog && kms->catalog->has_roi_misr)
+		sde_roi_misr_init(sde_crtc);
+}
+
+static void sde_crtc_post_commit_prepare_fence(
+		struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc->state);
+
+	sde_post_commit_fence_create(
+			&sde_crtc->post_commit_fence_ctx,
+			cstate->post_commit_fence_mask,
+			sde_crtc->output_fence->commit_count);
+}
+
+static void sde_crtc_post_commit_update_fence(
+		struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc->state);
+
+	if (!cstate->post_commit_fence_mask)
+		return;
+
+	sde_post_commit_fence_update(
+			&sde_crtc->post_commit_fence_ctx);
+}
+
 static void sde_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
@@ -890,8 +928,6 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 		drm_property_blob_put(sde_crtc->blob_info);
 	msm_property_destroy(&sde_crtc->property_info);
 	sde_cp_crtc_destroy_properties(crtc);
-
-	sde_roi_misr_deinit(sde_crtc);
 
 	sde_fence_deinit(sde_crtc->output_fence);
 	_sde_crtc_deinit_events(sde_crtc);
@@ -1236,9 +1272,8 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *crtc_state;
 	struct sde_rect *crtc_roi;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info *mode_info;
 	int i = 0;
-	int rc;
 	bool is_crtc_roi_dirty;
 	bool is_any_conn_roi_dirty;
 
@@ -1248,6 +1283,7 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = to_sde_crtc_state(state);
 	crtc_roi = &crtc_state->crtc_roi;
+	mode_info = &crtc_state->mode_info;
 
 	is_crtc_roi_dirty = sde_crtc_is_crtc_roi_dirty(state);
 	is_any_conn_roi_dirty = false;
@@ -1260,13 +1296,7 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 		if (!conn_state || conn_state->crtc != crtc)
 			continue;
 
-		rc = sde_connector_get_mode_info(conn_state, &mode_info);
-		if (rc) {
-			SDE_ERROR("failed to get mode info\n");
-			return -EINVAL;
-		}
-
-		if (!mode_info.roi_caps.enabled)
+		if (!mode_info->roi_caps.enabled)
 			continue;
 
 		sde_conn = to_sde_connector(conn_state->connector);
@@ -1592,67 +1622,49 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *sde_crtc_state;
-	struct msm_mode_info mode_info;
-	int rc, lm_idx, i;
+	struct msm_mode_info *mode_info;
+	int rc, lm_idx;
 
 	if (!crtc || !state)
 		return -EINVAL;
 
-	memset(&mode_info, 0, sizeof(mode_info));
-
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc_state = to_sde_crtc_state(state);
+	mode_info = &sde_crtc_state->mode_info;
 
-	/*
-	 * check connector array cached at modeset time since incoming atomic
-	 * state may not include any connectors if they aren't modified
-	 */
-	for (i = 0; i < sde_crtc_state->num_connectors; i++) {
-		struct drm_connector *conn = sde_crtc_state->connectors[i];
+	if (!mode_info->roi_caps.enabled)
+		return 0;
 
-		if (!conn || !conn->state)
-			continue;
+	if (sde_crtc_state->user_roi_list.num_rects >
+			mode_info->roi_caps.num_roi) {
+		SDE_ERROR("roi count is exceeding limit, %d > %d\n",
+				sde_crtc_state->user_roi_list.num_rects,
+				mode_info->roi_caps.num_roi);
+		return -E2BIG;
+	}
 
-		rc = sde_connector_get_mode_info(conn->state, &mode_info);
-		if (rc) {
-			SDE_ERROR("failed to get mode info\n");
-			return -EINVAL;
-		}
+	rc = _sde_crtc_set_crtc_roi(crtc, state);
+	if (rc)
+		return rc;
 
-		if (!mode_info.roi_caps.enabled)
-			continue;
+	rc = _sde_crtc_check_autorefresh(crtc, state);
+	if (rc)
+		return rc;
 
-		if (sde_crtc_state->user_roi_list.num_rects >
-				mode_info.roi_caps.num_roi) {
-			SDE_ERROR("roi count is exceeding limit, %d > %d\n",
-					sde_crtc_state->user_roi_list.num_rects,
-					mode_info.roi_caps.num_roi);
-			return -E2BIG;
-		}
-
-		rc = _sde_crtc_set_crtc_roi(crtc, state);
-		if (rc)
-			return rc;
-
-		rc = _sde_crtc_check_autorefresh(crtc, state);
-		if (rc)
-			return rc;
-
-		for (lm_idx = 0; lm_idx < sde_crtc_state->num_mixers;
-				lm_idx++) {
-			rc = _sde_crtc_set_lm_roi(crtc, state, lm_idx);
-			if (rc)
-				return rc;
-		}
-
-		rc = _sde_crtc_check_rois_centered_and_symmetric(crtc, state);
-		if (rc)
-			return rc;
-
-		rc = _sde_crtc_check_planes_within_crtc_roi(crtc, state);
+	for (lm_idx = 0; lm_idx < sde_crtc_state->num_mixers;
+			lm_idx++) {
+		rc = _sde_crtc_set_lm_roi(crtc, state, lm_idx);
 		if (rc)
 			return rc;
 	}
+
+	rc = _sde_crtc_check_rois_centered_and_symmetric(crtc, state);
+	if (rc)
+		return rc;
+
+	rc = _sde_crtc_check_planes_within_crtc_roi(crtc, state);
+	if (rc)
+		return rc;
 
 	return 0;
 }
@@ -1671,10 +1683,8 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc,
 	struct sde_kms *kms;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *sde_crtc_state;
-	struct drm_connector *conn;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info *mode_info;
 	u32 gcd, m, n;
-	int rc;
 
 	kms = _sde_crtc_get_kms(crtc);
 	if (!kms || !kms->catalog) {
@@ -1687,40 +1697,34 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc_state = to_sde_crtc_state(state);
+	mode_info = &sde_crtc_state->mode_info;
 
 	/* panel stacking only support single connector */
 	if (sde_crtc_state->num_connectors != 1)
 		return 0;
 
-	conn = sde_crtc_state->connectors[0];
-	rc = sde_connector_get_mode_info(conn->state, &mode_info);
-	if (rc) {
-		SDE_ERROR("failed to get mode info\n");
-		return -EINVAL;
-	}
-
-	if (!mode_info.vpadding)
+	if (!mode_info->vpadding)
 		goto done;
 
-	if (mode_info.vpadding < state->mode.vdisplay) {
+	if (mode_info->vpadding < state->mode.vdisplay) {
 		SDE_ERROR("padding height %d is less than vdisplay %d\n",
-			mode_info.vpadding, state->mode.vdisplay);
+			mode_info->vpadding, state->mode.vdisplay);
 		return -EINVAL;
 	}
 
 	/* skip calculation if already cached */
-	if (mode_info.vpadding == sde_crtc_state->padding_height)
+	if (mode_info->vpadding == sde_crtc_state->padding_height)
 		return 0;
 
-	gcd = _sde_crtc_calc_gcd(mode_info.vpadding, state->mode.vdisplay);
+	gcd = _sde_crtc_calc_gcd(mode_info->vpadding, state->mode.vdisplay);
 	if (!gcd) {
 		SDE_ERROR("zero gcd found for padding height %d %d\n",
-			mode_info.vpadding, state->mode.vdisplay);
+			mode_info->vpadding, state->mode.vdisplay);
 		return -EINVAL;
 	}
 
 	m = state->mode.vdisplay / gcd;
-	n = mode_info.vpadding / gcd - m;
+	n = mode_info->vpadding / gcd - m;
 
 	if (m > MAX_VPADDING_RATIO_M || n > MAX_VPADDING_RATIO_N) {
 		SDE_ERROR("unsupported panel stacking pattern %d:%d", m, n);
@@ -1731,7 +1735,7 @@ static int _sde_crtc_check_panel_stacking(struct drm_crtc *crtc,
 	sde_crtc_state->padding_dummy = n;
 
 done:
-	sde_crtc_state->padding_height = mode_info.vpadding;
+	sde_crtc_state->padding_height = mode_info->vpadding;
 	return 0;
 }
 
@@ -1846,6 +1850,9 @@ static int pstate_cmp(const void *a, const void *b)
 
 	pa_zpos = sde_plane_get_property(pa->sde_pstate, PLANE_PROP_ZPOS);
 	pb_zpos = sde_plane_get_property(pb->sde_pstate, PLANE_PROP_ZPOS);
+
+	if (!pa->sde_pstate || !pb->sde_pstate)
+		return rc;
 
 	pa_layout = pa->sde_pstate->layout;
 	pb_layout = pb->sde_pstate->layout;
@@ -2862,9 +2869,6 @@ static void sde_crtc_frame_event_cb(void *data, u32 event)
 		sde_recovery_set_event(crtc->dev, DRM_EVENT_SDE_VSYNC_MISS,
 				crtc);
 
-	if (event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE)
-		sde_roi_misr_update_fence(sde_crtc, true);
-
 	fevent->event = event;
 	fevent->crtc = crtc;
 	fevent->connector = cb_data->connector;
@@ -2909,8 +2913,8 @@ void sde_crtc_prepare_commit(struct drm_crtc *crtc,
 	/* prepare main output fence */
 	sde_fence_prepare(sde_crtc->output_fence);
 
-	/* prepare roi misr fence */
-	sde_roi_misr_prepare_fence(sde_crtc, cstate);
+	/* prepare post-commit fence */
+	sde_crtc_post_commit_prepare_fence(crtc);
 	SDE_ATRACE_END("sde_crtc_prepare_commit");
 }
 
@@ -2982,6 +2986,8 @@ static void sde_crtc_vblank_cb(void *data)
 {
 	struct drm_crtc *crtc = (struct drm_crtc *)data;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+
+	sde_post_commit_signal_fence(&sde_crtc->post_commit_fence_ctx);
 
 	/* keep statistics on vblank callback - with auto reset via debugfs */
 	if (ktime_compare(sde_crtc->vblank_cb_time, ktime_set(0, 0)) == 0)
@@ -3863,7 +3869,7 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			(cont_splash_enabled || sde_crtc->enabled))
 		sde_cp_crtc_apply_properties(crtc);
 
-	sde_roi_misr_setup(crtc);
+	sde_crtc_post_commit_update_fence(crtc);
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
@@ -4647,6 +4653,7 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 	 * so we need clear these state when do state duplication operation
 	 */
 	cstate->misr_state.roi_misr_cfg.user_fence_fd_addr = NULL;
+	cstate->post_commit_fence_mask = 0;
 
 	/* duplicate base helper */
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &cstate->base);
@@ -5563,18 +5570,14 @@ static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 
 	for (i = 1; i < SSPP_MAX; i++) {
 		if (pipe_staged[i]) {
-			sde_plane_clear_multirect(pipe_staged[i]);
 			if (is_sde_plane_virtual(pipe_staged[i]->plane)) {
-				struct sde_plane_state *psde_state;
-
-				SDE_DEBUG("r1 only virt plane:%d staged\n",
-					 pipe_staged[i]->plane->base.id);
-
-				psde_state = to_sde_plane_state(
-						pipe_staged[i]);
-
-				psde_state->multirect_index = SDE_SSPP_RECT_1;
+				SDE_ERROR(
+					"r1 only virt plane:%d not supported\n",
+					pipe_staged[i]->plane->base.id);
+				rc  = -EINVAL;
+				goto end;
 			}
+			sde_plane_clear_multirect(pipe_staged[i]);
 		}
 	}
 
@@ -5807,8 +5810,9 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"output_fence_offset", 0x0, 0, 1, 0,
 			CRTC_PROP_OUTPUT_FENCE_OFFSET);
 
-	msm_property_install_volatile_range(&sde_crtc->property_info,
-			"roi_misr", 0x0, 0, ~0, 0, CRTC_PROP_ROI_MISR);
+	if (catalog->has_roi_misr)
+		msm_property_install_volatile_range(&sde_crtc->property_info,
+				"roi_misr", 0x0, 0, ~0, 0, CRTC_PROP_ROI_MISR);
 
 	msm_property_install_range(&sde_crtc->property_info,
 			"core_clk", 0x0, 0, U64_MAX,
@@ -6132,7 +6136,8 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	int idx, ret;
-	uint64_t fence_fd;
+	uint64_t fence_user_fd;
+	uint64_t __user prev_user_fd;
 
 	if (!crtc || !state || !property) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -6192,19 +6197,34 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		if (!val)
 			goto exit;
 
-		ret = _sde_crtc_get_output_fence(crtc, state, &fence_fd);
+		ret = copy_from_user(&prev_user_fd, (void __user *)val,
+				sizeof(uint64_t));
 		if (ret) {
-			SDE_ERROR("fence create failed rc:%d\n", ret);
+			SDE_ERROR("copy from user failed rc:%d\n", ret);
+			ret = -EFAULT;
 			goto exit;
 		}
 
-		ret = copy_to_user((uint64_t __user *)(uintptr_t)val, &fence_fd,
-				sizeof(uint64_t));
-		if (ret) {
-			SDE_ERROR("copy to user failed rc:%d\n", ret);
-			put_unused_fd(fence_fd);
-			ret = -EFAULT;
-			goto exit;
+		/*
+		 * client is expected to reset the property to -1 before
+		 * requesting for the release fence
+		 */
+		if (prev_user_fd == -1) {
+			ret = _sde_crtc_get_output_fence(crtc, state,
+					&fence_user_fd);
+			if (ret) {
+				SDE_ERROR("fence create failed rc:%d\n", ret);
+				goto exit;
+			}
+
+			ret = copy_to_user((uint64_t __user *)(uintptr_t)val,
+					&fence_user_fd, sizeof(uint64_t));
+			if (ret) {
+				SDE_ERROR("copy to user failed rc:%d\n", ret);
+				put_unused_fd(fence_user_fd);
+				ret = -EFAULT;
+				goto exit;
+			}
 		}
 		break;
 	case CRTC_PROP_ROI_MISR:
@@ -7069,7 +7089,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	kthread_init_delayed_work(&sde_crtc->idle_notify_work,
 					__sde_crtc_idle_notify_work);
 
-	sde_roi_misr_init(sde_crtc);
+	sde_crtc_post_commit_init(sde_crtc);
 
 	SDE_DEBUG("%s: successfully initialized crtc\n", sde_crtc->name);
 	return crtc;

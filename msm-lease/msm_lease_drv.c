@@ -53,6 +53,7 @@
 #include <linux/component.h>
 #include <drm/drm_of.h>
 #include <drm/drmP.h>
+#include <drm/drm_atomic_uapi.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_auth.h>
@@ -284,14 +285,19 @@ static int msm_lease_open(struct drm_device *dev, struct drm_file *file)
 	if (!dev->registered)
 		return -ENOENT;
 
-	rc = g_master_open(dev, file);
-	if (rc)
-		return rc;
+	if (!dev->mode_config.poll_enabled || drm_is_render_client(file))
+		return g_master_open(dev, file);
 
 	mutex_lock(&g_lease_mutex);
 
 	lease = _find_lease_from_minor(file->minor);
-	if (!lease)
+	if (!lease) {
+		rc = -ENODEV;
+		goto out2;
+	}
+
+	rc = g_master_open(dev, file);
+	if (rc)
 		goto out2;
 
 	mutex_lock(&dev->master_mutex);
@@ -365,6 +371,100 @@ out2:
 	return rc;
 }
 
+static int msm_lease_lastclose(struct msm_lease *lease)
+{
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_state *state;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter conn_iter;
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
+	int ret;
+
+	state = drm_atomic_state_alloc(lease->drm_dev);
+	if (!state)
+		return -ENOMEM;
+
+	drm_modeset_acquire_init(&ctx, 0);
+	state->acquire_ctx = &ctx;
+retry:
+	drm_for_each_crtc(crtc, lease->drm_dev) {
+		if (!_find_obj_id(crtc->base.id,
+				lease->object_ids, lease->obj_cnt))
+			continue;
+
+		crtc_state = drm_atomic_get_crtc_state(state, crtc);
+		if (IS_ERR(crtc_state)) {
+			ret = PTR_ERR(crtc_state);
+			goto end;
+		}
+
+		/* disable connectors */
+		drm_connector_list_iter_begin(lease->drm_dev, &conn_iter);
+		drm_for_each_connector_iter(connector, &conn_iter) {
+			if (!(drm_connector_mask(connector) &
+					crtc_state->connector_mask))
+				continue;
+
+			conn_state = drm_atomic_get_connector_state(state,
+					connector);
+			if (IS_ERR(conn_state)) {
+				ret = PTR_ERR(conn_state);
+				goto end;
+			}
+
+			ret = drm_atomic_set_crtc_for_connector(conn_state,
+					NULL);
+			if (ret)
+				goto end;
+		}
+		drm_connector_list_iter_end(&conn_iter);
+
+		/* disable mode */
+		ret = drm_atomic_set_mode_for_crtc(crtc_state, NULL);
+		if (ret)
+			goto end;
+
+		/* disable planes */
+		drm_for_each_plane_mask(plane, lease->drm_dev,
+				crtc_state->plane_mask) {
+			plane_state = drm_atomic_get_plane_state(state,
+					plane);
+			if (IS_ERR(plane_state)) {
+				ret = PTR_ERR(plane_state);
+				goto end;
+			}
+
+			ret = drm_atomic_set_crtc_for_plane(plane_state,
+					NULL);
+			if (ret)
+				goto end;
+
+			drm_atomic_set_fb_for_plane(plane_state, NULL);
+		}
+
+		/* disable crtc */
+		crtc_state->active = false;
+	}
+
+	ret = drm_atomic_commit(state);
+end:
+	if (ret == -EDEADLK) {
+		drm_atomic_state_clear(state);
+		drm_modeset_backoff(&ctx);
+		goto retry;
+	}
+
+	drm_atomic_state_put(state);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
+	return ret;
+}
+
 static void msm_lease_postclose(struct drm_device *dev, struct drm_file *file)
 {
 	struct msm_lease *lease;
@@ -377,6 +477,9 @@ static void msm_lease_postclose(struct drm_device *dev, struct drm_file *file)
 	if (!lease)
 		goto out;
 
+	if (drm_is_current_master(file))
+		msm_lease_lastclose(lease);
+
 	mutex_lock(&dev->master_mutex);
 	if (drm_is_current_master(file)) {
 		drm_master_put(&lease->master);
@@ -388,11 +491,6 @@ static void msm_lease_postclose(struct drm_device *dev, struct drm_file *file)
 
 out:
 	mutex_unlock(&g_lease_mutex);
-}
-
-static int msm_lease_mastercreate(struct drm_device *dev, struct drm_master *master)
-{
-	return -EINVAL;
 }
 
 static long msm_lease_ioctl(struct file *filp,
@@ -753,6 +851,9 @@ static void msm_lease_parse_remain_objs(void)
 
 			found = false;
 			drm_for_each_encoder(encoder, dev) {
+				if (encoder->encoder_type ==
+						DRM_MODE_ENCODER_VIRTUAL)
+					continue;
 				if ((encoder->possible_crtcs &
 						drm_crtc_mask(crtc)) &&
 						(encoder->possible_crtcs !=
@@ -894,7 +995,7 @@ static int msm_lease_notifier(struct notifier_block *nb,
 {
 	struct msm_lease *lease_drv;
 	struct drm_device *ddev, *master_ddev;
-	u32 object_ids[MAX_LEASE_OBJECT_COUNT];
+	u32 object_ids[MAX_LEASE_OBJECT_COUNT] = {0};
 	int object_count = 0;
 	int ret;
 
@@ -924,7 +1025,8 @@ static int msm_lease_notifier(struct notifier_block *nb,
 	/* update ids list */
 	lease_drv->minor = ddev->primary;
 	lease_drv->obj_cnt = object_count;
-	memcpy(lease_drv->object_ids, object_ids, sizeof(u32) * object_count);
+	if (object_count > 0)
+		memcpy(lease_drv->object_ids, object_ids, sizeof(u32) * object_count);
 
 	/* fixup crtcs' primary planes */
 	msm_lease_fixup_crtc_primary(master_ddev, object_ids, object_count);
@@ -935,7 +1037,6 @@ static int msm_lease_notifier(struct notifier_block *nb,
 		g_master_postclose = master_ddev->driver->postclose;
 		master_ddev->driver->open = msm_lease_open;
 		master_ddev->driver->postclose = msm_lease_postclose;
-		master_ddev->driver->master_create = msm_lease_mastercreate;
 	}
 
 	/* hook ioctl function if dev_name is defined */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -27,6 +27,7 @@
 #include "sde_core_perf.h"
 #include "sde_hw_blk.h"
 #include "sde_hw_ds.h"
+#include "sde_fence_post_commit.h"
 #include "sde_roi_misr.h"
 
 #define SDE_CRTC_NAME_SIZE	12
@@ -230,6 +231,7 @@ struct sde_crtc_fps_info {
  * @rp_lock       : serialization lock for resource pool
  * @rp_head       : list of active resource pool
  * @plane_mask_old: keeps track of the planes used in the previous commit
+ * @post_commit_fence_ctx: post-commit fence context of this crtc
  * @roi_misr_data: roi misr related fence, event and hw config data
  */
 struct sde_crtc {
@@ -313,6 +315,7 @@ struct sde_crtc {
 	/* blob for histogram data */
 	struct drm_property_blob *hist_blob;
 
+	struct sde_post_commit_fence_context post_commit_fence_ctx;
 	struct sde_misr_crtc_data roi_misr_data;
 };
 
@@ -382,6 +385,7 @@ struct sde_crtc_respool {
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
  * @topology_name : Current topology name
+ * @mode_info     : Local copy of msm_mode_info struct
  * @num_mixers    : Number of mixers in current topology
  * @crtc_roi      : Current CRTC ROI. Possibly sub-rectangle of mode.
  *                  Origin top left of CRTC.
@@ -410,6 +414,7 @@ struct sde_crtc_respool {
  * @padding_active: active lines in panel stacking pattern
  * @padding_dummy: dummy lines in panel stacking pattern
  * @misr_state: misr config data and current topology state
+ * @post_commit_fence_mask: post-commit fence mask for sub-fence creation
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -422,6 +427,7 @@ struct sde_crtc_state {
 	bool bw_split_vote;
 
 	enum sde_rm_topology_name topology_name;
+	struct msm_mode_info mode_info;
 	u32 num_mixers;
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
@@ -453,6 +459,7 @@ struct sde_crtc_state {
 	struct sde_crtc_respool rp;
 
 	struct sde_misr_state misr_state;
+	uint32_t post_commit_fence_mask;
 };
 
 enum sde_crtc_irq_state {
