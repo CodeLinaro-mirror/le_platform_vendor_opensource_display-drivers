@@ -737,7 +737,7 @@ static void dsi_drm_update_dtd(struct edid *edid,
 				timing->v_back_porch;
 		u32 h_img = 0, v_img = 0;
 
-		dtd->pixel_clock = mode->pixel_clk_khz / 10;
+		dtd->pixel_clock = cpu_to_le16(mode->pixel_clk_khz / 10);
 
 		pd->hactive_lo = timing->h_active & 0xFF;
 		pd->hblank_lo = h_blank & 0xFF;
@@ -787,6 +787,7 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data)
 {
 	int rc, i;
 	u32 count = 0, edid_size;
+	u32 width_mm = 0, height_mm = 0;
 	struct dsi_display_mode *modes = NULL;
 	struct drm_display_mode drm_mode;
 	struct dsi_display *display = data;
@@ -803,6 +804,9 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data)
 	edid_size = min_t(u32, sizeof(edid), EDID_LENGTH);
 
 	memcpy(&edid, edid_buf, edid_size);
+
+	width_mm = connector->display_info.width_mm;
+	height_mm = connector->display_info.height_mm;
 
 	if (sde_connector_get_panel(connector)) {
 		/*
@@ -857,6 +861,13 @@ int dsi_connector_get_modes(struct drm_connector *connector, void *data)
 	rc = drm_connector_update_edid_property(connector, &edid);
 	if (rc)
 		count = 0;
+
+	/* Override panel size if it has been set in device tree */
+	if (width_mm && height_mm) {
+		connector->display_info.width_mm = width_mm;
+		connector->display_info.height_mm = height_mm;
+	}
+
 end:
 	pr_debug("MODE COUNT =%d\n\n", count);
 	return count;

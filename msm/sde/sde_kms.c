@@ -1471,7 +1471,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		connector = sde_connector_init(dev,
 					encoder,
-					0,
+					NULL,
 					display,
 					&dsi_ops,
 					DRM_CONNECTOR_POLL_HPD,
@@ -1525,7 +1525,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		connector = sde_connector_init(dev,
 				encoder,
-				0,
+				NULL,
 				display,
 				&wb_ops,
 				DRM_CONNECTOR_POLL_HPD,
@@ -2676,6 +2676,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms)
 		SDE_DEBUG("for dp-display:%d crtc id = %d enc id =%d\n",
 				i, crtc->base.id, encoder->base.id);
 
+		mutex_lock(&dev->mode_config.mutex);
 		connector = dp_display->base_connector;
 		if (!connector) {
 			SDE_ERROR("connector not initialized\n");

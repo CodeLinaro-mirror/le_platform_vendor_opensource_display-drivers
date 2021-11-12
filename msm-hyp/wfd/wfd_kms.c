@@ -121,6 +121,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
+#include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
 #include "wfd_kms.h"
 
@@ -209,6 +210,42 @@ static const char * const disp_order_str[] = {
 	"octonary",
 };
 
+static const struct {
+	uint32_t drm_fmt;
+	WFDint wfd_fmt;
+	WFDint wfd_comp_fmt;
+} drm_wfd_formats[] = {
+	{ DRM_FORMAT_C8, WFD_FORMAT_BYTE, WFD_FORMAT_BYTE },
+	{ DRM_FORMAT_ARGB4444, WFD_FORMAT_RGBA4444, WFD_FORMAT_RGBA4444 },
+	{ DRM_FORMAT_XRGB4444, WFD_FORMAT_RGBX4444, WFD_FORMAT_RGBX4444 },
+	{ DRM_FORMAT_ARGB1555, WFD_FORMAT_RGBA5551, WFD_FORMAT_RGBA5551 },
+	{ DRM_FORMAT_XRGB1555, WFD_FORMAT_RGBX5551, WFD_FORMAT_RGBX5551 },
+	{ DRM_FORMAT_RGB565, WFD_FORMAT_RGB565, WFD_FORMAT_RGB565 },
+	{ DRM_FORMAT_RGB888, WFD_FORMAT_RGB888, WFD_FORMAT_RGB888 },
+	{ DRM_FORMAT_ARGB8888, WFD_FORMAT_RGBA8888, WFD_FORMAT_RGBA8888 },
+	{ DRM_FORMAT_XRGB8888, WFD_FORMAT_RGBX8888, WFD_FORMAT_RGBX8888 },
+	{ DRM_FORMAT_YVU410, WFD_FORMAT_YVU9, WFD_FORMAT_YVU9 },
+	{ DRM_FORMAT_YUV420, WFD_FORMAT_YUV420, WFD_FORMAT_YUV420 },
+	{ DRM_FORMAT_NV12, WFD_FORMAT_NV12, WFD_FORMAT_NV12 },
+	{ DRM_FORMAT_YVU420, WFD_FORMAT_YV12, WFD_FORMAT_YV12 },
+	{ DRM_FORMAT_UYVY, WFD_FORMAT_UYVY, WFD_FORMAT_UYVY },
+	{ DRM_FORMAT_YUYV, WFD_FORMAT_YUY2, WFD_FORMAT_YUY2 },
+	{ DRM_FORMAT_YVYU, WFD_FORMAT_YVYU, WFD_FORMAT_YVYU },
+	{ DRM_FORMAT_VYUY, WFD_FORMAT_V422, WFD_FORMAT_V422 },
+	{ DRM_FORMAT_AYUV, WFD_FORMAT_AYUV, WFD_FORMAT_AYUV },
+	{ DRM_FORMAT_NV12, WFD_FORMAT_P010, WFD_FORMAT_P010 },
+	{ DRM_FORMAT_NV12, WFD_FORMAT_NV12_QC_TP10, WFD_FORMAT_NV12_QC_TP10 },
+	{ DRM_FORMAT_ABGR8888, WFD_FORMAT_BGRA8888, WFD_FORMAT_RGBA8888 },
+	{ DRM_FORMAT_XBGR8888, WFD_FORMAT_BGRX8888, WFD_FORMAT_RGBA8888 },
+	{ DRM_FORMAT_BGR565, WFD_FORMAT_BGR565, WFD_FORMAT_RGB565 },
+	{ DRM_FORMAT_ARGB2101010, WFD_FORMAT_RGBA1010102, WFD_FORMAT_RGBA1010102 },
+	{ DRM_FORMAT_XRGB2101010, WFD_FORMAT_RGBX1010102, WFD_FORMAT_RGBX1010102 },
+	{ DRM_FORMAT_ABGR2101010, WFD_FORMAT_BGRA1010102, WFD_FORMAT_RGBA1010102 },
+	{ DRM_FORMAT_XBGR2101010, WFD_FORMAT_BGRX1010102, WFD_FORMAT_RGBA1010102 },
+	{ DRM_FORMAT_BGR888, WFD_FORMAT_BGR888, WFD_FORMAT_RGB888 },
+	{ 0, 0, 0 },
+};
+
 static int _wfd_kms_parse_dt(struct device_node *node, u32 *client_id)
 {
 	int len = 0;
@@ -274,7 +311,7 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 
 static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 {
-	int i, ret = 0;
+	int i, j, n, ret = 0;
 	int format_count = 0;
 	WFDint reported_format_count = 0;
 	WFDint formats[MAX_PIPELINE_ATTRIBS];
@@ -313,7 +350,6 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 		goto fail;
 	}
 
-	priv->base.format_count = format_count;
 	priv->base.format_types = kcalloc(format_count, sizeof(uint32_t),
 			GFP_KERNEL);
 	if (priv->base.format_types == NULL) {
@@ -321,93 +357,22 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 		goto fail;
 	}
 
-	for (i = 0; i < format_count; i++)
-		switch (formats[i]) {
-		case WFD_FORMAT_BYTE:
-			break;
-		case WFD_FORMAT_RGBA4444:
-			priv->base.format_types[i] = DRM_FORMAT_ARGB4444;
-			break;
-		case WFD_FORMAT_RGBX4444:
-			priv->base.format_types[i] = DRM_FORMAT_XRGB4444;
-			break;
-		case WFD_FORMAT_RGBA5551:
-			priv->base.format_types[i] = DRM_FORMAT_ARGB1555;
-			break;
-		case WFD_FORMAT_RGBX5551:
-			priv->base.format_types[i] = DRM_FORMAT_XRGB1555;
-			break;
-		case WFD_FORMAT_RGB565:
-			priv->base.format_types[i] = DRM_FORMAT_RGB565;
-			break;
-		case WFD_FORMAT_RGB888:
-			priv->base.format_types[i] = DRM_FORMAT_RGB888;
-			break;
-		case WFD_FORMAT_RGBA8888:
-			priv->base.format_types[i] = DRM_FORMAT_ARGB8888;
-			break;
-		case WFD_FORMAT_RGBX8888:
-			priv->base.format_types[i] = DRM_FORMAT_XRGB8888;
-			break;
-		case WFD_FORMAT_YVU9:
-			priv->base.format_types[i] = DRM_FORMAT_YVU410;
-			break;
-		case WFD_FORMAT_YUV420:
-			priv->base.format_types[i] = DRM_FORMAT_YUV420;
-			break;
-		case WFD_FORMAT_NV12:
-			priv->base.format_types[i] = DRM_FORMAT_NV12;
-			break;
-		case WFD_FORMAT_YV12:
-			priv->base.format_types[i] = DRM_FORMAT_YVU420;
-			break;
-		case WFD_FORMAT_UYVY:
-			priv->base.format_types[i] = DRM_FORMAT_UYVY;
-			break;
-		case WFD_FORMAT_YUY2:
-			priv->base.format_types[i] = DRM_FORMAT_YUYV;
-			break;
-		case WFD_FORMAT_YVYU:
-			priv->base.format_types[i] = DRM_FORMAT_YVYU;
-			break;
-		case WFD_FORMAT_V422:
-			priv->base.format_types[i] = DRM_FORMAT_VYUY;
-			break;
-		case WFD_FORMAT_AYUV:
-			priv->base.format_types[i] = DRM_FORMAT_AYUV;
-			break;
-		case WFD_FORMAT_P010:
-			priv->base.format_types[i] = DRM_FORMAT_NV12;
-			break;
-		case WFD_FORMAT_TP10:
-			priv->base.format_types[i] = DRM_FORMAT_NV12;
-			break;
-		case WFD_FORMAT_BGRA8888:
-			priv->base.format_types[i] = DRM_FORMAT_ABGR8888;
-			break;
-		case WFD_FORMAT_BGRX8888:
-			priv->base.format_types[i] = DRM_FORMAT_XBGR8888;
-			break;
-		case WFD_FORMAT_BGR565:
-			priv->base.format_types[i] = DRM_FORMAT_BGR565;
-			break;
-		case WFD_FORMAT_RGBA1010102:
-			priv->base.format_types[i] = DRM_FORMAT_ARGB2101010;
-			break;
-		case WFD_FORMAT_RGBX1010102:
-			priv->base.format_types[i] = DRM_FORMAT_XRGB2101010;
-			break;
-		case WFD_FORMAT_BGRA1010102:
-			priv->base.format_types[i] = DRM_FORMAT_ABGR2101010;
-			break;
-		case WFD_FORMAT_BGRX1010102:
-			priv->base.format_types[i] = DRM_FORMAT_XBGR2101010;
-			break;
-		default:
+	n = 0;
+	for (i = 0; i < format_count; i++) {
+		j = 0;
+		while (drm_wfd_formats[j].wfd_fmt || drm_wfd_formats[j].drm_fmt) {
+			if (formats[i] == drm_wfd_formats[j].wfd_fmt) {
+				priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+				break;
+			}
+			j++;
+		}
+		if (!drm_wfd_formats[j].wfd_fmt && !drm_wfd_formats[j].drm_fmt)
 			pr_debug("%s - formats[%d] = %d is not supported!\n",
 				__func__, i, formats[i]);
-			break;
 	}
+	priv->base.format_count = n;
+
 fail:
 	return ret;
 }
@@ -453,7 +418,7 @@ static bool _wfd_kms_plane_is_csc_matrix_changed(
 		0x7F9B800000,	/* WFD_COLOR_SPACE_BT601 */
 		0x7fa8000000,	/* WFD_COLOR_SPACE_BT601_FULL */
 		0x7fc9800000,	/* WFD_COLOR_SPACE_BT709 */
-		0x0		/* WFD_COLOR_SPACE_BT709_FULL */
+		0x7fd0000000 	/* WFD_COLOR_SPACE_BT709_FULL */
 	};
 
 	/* ctm_coeff[4] is unique for each matrix */
@@ -479,6 +444,9 @@ static bool _wfd_kms_plane_is_csc_matrix_changed(
 		else if (msm_hyp_csc_unique_coeffs[WFD_COLOR_SPACE_BT709] ==
 				cur->csc.ctm_coeff[unique_coeff_idx])
 			*color_space = WFD_COLOR_SPACE_BT709;
+		else if (msm_hyp_csc_unique_coeffs[WFD_COLOR_SPACE_BT709_FULL] ==
+                                cur->csc.ctm_coeff[unique_coeff_idx])
+			*color_space = WFD_COLOR_SPACE_BT709_FULL;
 		else
 			*color_space = WFD_COLOR_SPACE_BT601;
 	}
@@ -489,110 +457,40 @@ static bool _wfd_kms_plane_is_csc_matrix_changed(
 static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 		uint64_t modifier, WFDint *wfd_format, WFDint *wfd_usage)
 {
+	int i;
+
 	if ((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
 			DRM_FORMAT_MOD_QTI_COMPRESSED)
 		*wfd_usage = WFD_USAGE_DISPLAY | WFD_USAGE_COMPRESSION;
 	else
 		*wfd_usage = WFD_USAGE_DISPLAY;
 
-	switch (format) {
-	case DRM_FORMAT_ARGB4444:
-		*wfd_format = WFD_FORMAT_RGBA4444;
-		break;
-	case DRM_FORMAT_XRGB4444:
-		*wfd_format = WFD_FORMAT_RGBX4444;
-		break;
-	case DRM_FORMAT_ARGB1555:
-		*wfd_format = WFD_FORMAT_RGBA5551;
-		break;
-	case DRM_FORMAT_XRGB1555:
-		*wfd_format = WFD_FORMAT_RGBX5551;
-		break;
-	case DRM_FORMAT_RGB565:
-		*wfd_format = WFD_FORMAT_RGB565;
-		break;
-	case DRM_FORMAT_BGR565:
-		if (*wfd_usage & WFD_USAGE_COMPRESSION)
-			*wfd_format = WFD_FORMAT_RGB565;
-		else
-			*wfd_format = WFD_FORMAT_BGR565;
-		break;
-	case DRM_FORMAT_RGB888:
-		*wfd_format = WFD_FORMAT_RGB888;
-		break;
-	case DRM_FORMAT_ARGB8888:
+	i = 0;
+	while (drm_wfd_formats[i].wfd_fmt || drm_wfd_formats[i].drm_fmt) {
+		if (format == drm_wfd_formats[i].drm_fmt) {
+			if (*wfd_usage & WFD_USAGE_COMPRESSION)
+				*wfd_format = drm_wfd_formats[i].wfd_comp_fmt;
+			else
+				*wfd_format = drm_wfd_formats[i].wfd_fmt;
+			break;
+		}
+		i++;
+	}
+	if (!drm_wfd_formats[i].wfd_fmt && !drm_wfd_formats[i].drm_fmt) {
 		*wfd_format = WFD_FORMAT_RGBA8888;
-		break;
-	case DRM_FORMAT_XRGB8888:
-		*wfd_format = WFD_FORMAT_RGBX8888;
-		break;
-	case DRM_FORMAT_XBGR8888:
-		if (*wfd_usage & WFD_USAGE_COMPRESSION)
-			*wfd_format = WFD_FORMAT_RGBA8888;
-		else
-			*wfd_format = WFD_FORMAT_BGRX8888;
-		break;
-	case DRM_FORMAT_ABGR8888:
-		if (*wfd_usage & WFD_USAGE_COMPRESSION)
-			*wfd_format = WFD_FORMAT_RGBA8888;
-		else
-			*wfd_format = WFD_FORMAT_BGRA8888;
-		break;
-	case DRM_FORMAT_ARGB2101010:
-		*wfd_format = WFD_FORMAT_RGBA1010102;
-		break;
-	case DRM_FORMAT_XRGB2101010:
-		*wfd_format = WFD_FORMAT_RGBX1010102;
-		break;
-	case DRM_FORMAT_XBGR2101010:
-		if (*wfd_usage & WFD_USAGE_COMPRESSION)
-			*wfd_format = WFD_FORMAT_RGBA1010102;
-		else
-			*wfd_format = WFD_FORMAT_BGRX1010102;
-		break;
-	case DRM_FORMAT_ABGR2101010:
-		if (*wfd_usage & WFD_USAGE_COMPRESSION)
-			*wfd_format = WFD_FORMAT_RGBA1010102;
-		else
-			*wfd_format = WFD_FORMAT_BGRA1010102;
-		break;
-	case DRM_FORMAT_YVU410:
-		*wfd_format = WFD_FORMAT_YVU9;
-		break;
-	case DRM_FORMAT_YUV420:
-		*wfd_format = WFD_FORMAT_YUV420;
-		break;
-	case DRM_FORMAT_NV12:
+		pr_debug("%s - format = %d is not supported, fallback to RGBA8888!\n",
+			__func__, format);
+	}
+
+	if (format == DRM_FORMAT_NV12) {
 		if ((modifier & fourcc_mod_code(QTI, 0x7)) ==
 				fourcc_mod_code(QTI, 0x7))
-			*wfd_format = WFD_FORMAT_TP10;
+			*wfd_format = WFD_FORMAT_NV12_QC_TP10;
 		else if ((modifier & fourcc_mod_code(QTI, 0x2)) ==
 				fourcc_mod_code(QTI, 0x2))
 			*wfd_format = WFD_FORMAT_P010;
 		else
 			*wfd_format = WFD_FORMAT_NV12;
-		break;
-	case DRM_FORMAT_YVU420:
-		*wfd_format = WFD_FORMAT_YV12;
-		break;
-	case DRM_FORMAT_UYVY:
-		*wfd_format = WFD_FORMAT_UYVY;
-		break;
-	case DRM_FORMAT_YUYV:
-		*wfd_format = WFD_FORMAT_YUY2;
-		break;
-	case DRM_FORMAT_YVYU:
-		*wfd_format = WFD_FORMAT_YVYU;
-		break;
-	case DRM_FORMAT_VYUY:
-		*wfd_format = WFD_FORMAT_V422;
-		break;
-	case DRM_FORMAT_AYUV:
-		*wfd_format = WFD_FORMAT_AYUV;
-		break;
-	default:
-		*wfd_format = WFD_FORMAT_RGBA8888;
-		break;
 	}
 
 	return 0;
@@ -764,6 +662,7 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms)
 	WFDPort port;
 	int i, j, num_port, port_idx;
 	int rc;
+	char marker_buff[MARKER_BUFF_LENGTH] = {0};
 
 	attribs[0] = WFD_DEVICE_CLIENT_TYPE;
 	attribs[1] = kms->client_id;
@@ -775,11 +674,16 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms)
 		return rc;
 	}
 
+	snprintf(marker_buff, sizeof(marker_buff),
+		"kernel_fe: wire client %x ready", kms->client_id);
+	place_marker(marker_buff);
+
 	/* open a open WFD device */
 	num_dev = wfdEnumerateDevices_User(NULL, 0, attribs);
 	if (!num_dev) {
-		pr_err("wfdEnumerateDevices_User - failed!\n");
-		return -ENODEV;
+		pr_info("wfdEnumerateDevices_User - failed for client %x!\n",
+				kms->client_id);
+		wire_user_deinit(kms->client_id, 0x00);
 	}
 
 	wfdEnumerateDevices_User(wfd_ids, num_dev, attribs);
@@ -814,10 +718,8 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms)
 		}
 	}
 
-	if (!kms->wfd_device_cnt) {
-		pr_err("can't find valid WFD device\n");
-		return -ENODEV;
-	}
+	if (!kms->wfd_device_cnt)
+		pr_info("can't find valid WFD device\n");
 
 	return 0;
 }
@@ -899,11 +801,17 @@ static void wfd_kms_bridge_enable(struct drm_bridge *drm_bridge)
 			struct msm_hyp_connector, bridge);
 	struct wfd_connector_info_priv *priv = container_of(connector->info,
 			struct wfd_connector_info_priv, base);
+	static bool first_frame = true;
 
 	wfdSetPortAttribi_User(priv->wfd_device,
 			priv->wfd_port,
 			WFD_PORT_POWER_MODE,
 			WFD_POWER_MODE_ON);
+
+	if (first_frame) {
+		place_marker("kernel_fe: Set port attribute POWER ON");
+		first_frame = false;
+	}
 }
 
 static void wfd_kms_bridge_disable(struct drm_bridge *drm_bridge)
@@ -949,6 +857,9 @@ static int wfd_kms_get_connector_infos(struct msm_hyp_kms *kms,
 		*connector_num = wfd_kms->port_cnt;
 		return 0;
 	}
+
+	if (!wfd_kms->wfd_device_cnt)
+		return 0;
 
 	wfdGetDeviceAttribiv_User(wfd_kms->wfd_device[0],
 		WFD_DEVICE_MIN_MAX_WIDTH_HEIGHT, 4, data);
@@ -1490,12 +1401,18 @@ static void *wfd_kms_complete_handler_cb(enum event_types type,
 	struct display_event *disp_event = (struct display_event *)info;
 	struct msm_hyp_crtc *c = to_msm_hyp_crtc(crtc);
 	struct wfd_crtc_info_priv *priv;
+	static bool first_frame = true;
 
 	if (type != DISPLAY_EVENT || !info || !params)
 		return NULL;
 
 	if (disp_event->type == COMMIT_COMPLETE) {
 		msm_hyp_crtc_commit_done(crtc);
+
+		if (first_frame) {
+			place_marker("kernel_fe: Fisrt commit envent done");
+			first_frame = false;
+		}
 	} else if (disp_event->type == VSYNC) {
 		msm_hyp_crtc_vblank_done(crtc);
 
@@ -1544,9 +1461,17 @@ static void wfd_kms_commit(struct msm_hyp_kms *kms,
 	struct display_event disp_event;
 	struct cb_info cb_info;
 	int i;
+	static bool first_frame = true;
 
 	if (!old_state)
 		return;
+
+	HYP_ATRACE_BEGIN(__func__);
+
+	if (first_frame) {
+		place_marker("kernel_fe: First commit kickoff");
+		first_frame = false;
+	}
 
 	for_each_new_crtc_in_state(old_state, crtc, crtc_state, i) {
 		c = to_msm_hyp_crtc(crtc);
@@ -1572,6 +1497,7 @@ static void wfd_kms_commit(struct msm_hyp_kms *kms,
 				priv->wfd_port,
 				WFD_COMMIT_ASYNC);
 	}
+	HYP_ATRACE_END(__func__);
 }
 
 static void wfd_kms_enable_vblank(struct msm_hyp_kms *kms,
@@ -1644,6 +1570,7 @@ static int wfd_kms_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct wfd_kms *kms;
 	int ret;
+	char marker_buff[MARKER_BUFF_LENGTH] = {0};
 
 	kms = devm_kzalloc(dev, sizeof(*kms), GFP_KERNEL);
 	if (!kms)
@@ -1666,6 +1593,10 @@ static int wfd_kms_probe(struct platform_device *pdev)
 		pr_err("component add failed, rc=%d\n", ret);
 		return ret;
 	}
+
+	snprintf(marker_buff, sizeof(marker_buff),
+		"kernel_fe: wfd_kms probe client %x", kms->client_id);
+	place_marker(marker_buff);
 
 	return 0;
 }

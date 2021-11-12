@@ -117,7 +117,7 @@ struct shp_device {
 	const struct msm_kms_funcs *orig_kms_funcs;
 };
 
-struct shp_device g_shp_device;
+static struct shp_device g_shp_device;
 
 static void shp_plane_send_uevent(struct drm_device *dev)
 {
@@ -549,7 +549,7 @@ static int shp_parse(struct shp_device *shp)
 	struct shp_plane *shp_plane, *parent, *p;
 	struct shp_plane_state *shp_state;
 	struct drm_plane *plane;
-	enum sde_sspp sspp;
+	enum sde_sspp sspp = SSPP_NONE;
 	const char *name;
 	int dup_count, system_count, total_count, i, j;
 	int rc = 0;
