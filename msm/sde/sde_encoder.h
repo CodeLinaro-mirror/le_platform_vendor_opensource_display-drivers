@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -43,6 +44,7 @@
  *                          interface
  * @is_primary: set to true if the display is primary display
  * @topology:   Topology of the display
+ * @cwb_pp_ratio: pingpong ratio for pingpong hardware reservation in cwb case
  */
 struct sde_encoder_hw_resources {
 	enum sde_intf_mode intfs[INTF_MAX];
@@ -51,6 +53,7 @@ struct sde_encoder_hw_resources {
 	u32 display_num_of_h_tiles;
 	bool is_primary;
 	struct msm_display_topology topology;
+	uint32_t cwb_pp_ratio;
 };
 
 /**

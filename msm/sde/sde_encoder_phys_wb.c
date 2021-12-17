@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -861,7 +862,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush(
 	dspp_out = (cwb_capture_mode == CAPTURE_DSPP_OUT);
 	need_merge = (crtc->num_mixers > 1) ? true : false;
 
-	if (src_pp_idx > CWB_0 ||  ((cwb_idx + crtc->num_mixers) > CWB_MAX)) {
+	if (src_pp_idx > CWB_1 ||  ((cwb_idx + crtc->num_mixers) > CWB_MAX)) {
 		SDE_ERROR("invalid hw config for CWB\n");
 		return;
 	}
@@ -1631,7 +1632,8 @@ static void sde_encoder_phys_wb_get_hw_resources(
 		struct sde_encoder_hw_resources *hw_res,
 		struct drm_connector_state *conn_state)
 {
-	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_phys_wb *wb_enc;
+	struct sde_crtc *crtc;
 	struct sde_hw_wb *hw_wb;
 	struct drm_framebuffer *fb;
 	const struct sde_format *fmt = NULL;
@@ -1640,6 +1642,14 @@ static void sde_encoder_phys_wb_get_hw_resources(
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	if (!conn_state->crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return;
+	}
+
+	wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	crtc = to_sde_crtc(conn_state->crtc);
 
 	fb = sde_wb_connector_state_get_output_fb(conn_state);
 	if (fb) {
@@ -1654,9 +1664,12 @@ static void sde_encoder_phys_wb_get_hw_resources(
 	hw_wb = wb_enc->hw_wb;
 	hw_res->wbs[hw_wb->idx - WB_0] = phys_enc->intf_mode;
 	hw_res->needs_cdm = fmt ? SDE_FORMAT_IS_YUV(fmt) : false;
-	SDE_DEBUG("[wb:%d] intf_mode=%d needs_cdm=%d\n", hw_wb->idx - WB_0,
+	hw_res->cwb_pp_ratio = crtc->mixers[0].hw_lm->cap->pingpong;
+	SDE_DEBUG("[wb:%d] intf_mode=%d needs_cdm=%d cwb_pp_ratio=%d\n",
+			hw_wb->idx - WB_0,
 			hw_res->wbs[hw_wb->idx - WB_0],
-			hw_res->needs_cdm);
+			hw_res->needs_cdm,
+			hw_res->cwb_pp_ratio);
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
