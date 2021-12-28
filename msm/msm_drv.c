@@ -2250,6 +2250,7 @@ static int __init msm_drm_register(void)
 	msm_hdmi_register();
 	sde_wb_register();
 	sde_shp_register();
+	msm_lease_drm_register();
 	return platform_driver_register(&msm_platform_driver);
 }
 
@@ -2258,6 +2259,7 @@ static void __exit msm_drm_unregister(void)
 	DBG("fini");
 	platform_driver_unregister(&msm_platform_driver);
 	sde_shp_unregister();
+	msm_lease_drm_unregister();
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();
