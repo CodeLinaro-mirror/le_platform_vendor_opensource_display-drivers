@@ -92,7 +92,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
  * RETURNS
  * Zero for success or -errorno.
  */
-int msm_atomic_check(struct drm_device *dev,
+static int msm_atomic_check(struct drm_device *dev,
 			    struct drm_atomic_state *state)
 {
 	struct msm_drm_private *priv;
@@ -133,7 +133,7 @@ static char *vram = "16m";
 MODULE_PARM_DESC(vram, "Configure VRAM size (for devices without IOMMU/GPUMMU)");
 module_param(vram, charp, 0);
 
-bool dumpstate = false;
+static bool dumpstate;
 MODULE_PARM_DESC(dumpstate, "Dump KMS state on errors");
 module_param(dumpstate, bool, 0600);
 
@@ -1299,7 +1299,7 @@ int msm_drm_notify_components(struct drm_device *dev,
 
 static int msm_release(struct inode *inode, struct file *filp)
 {
-	struct drm_file *file_priv = filp->private_data;
+	struct drm_file *file_priv;
 	struct drm_minor *minor;
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
@@ -1311,6 +1311,7 @@ static int msm_release(struct inode *inode, struct file *filp)
 
 	mutex_lock(&msm_release_lock);
 
+	file_priv = filp->private_data;
 	if (!file_priv) {
 		ret = -EINVAL;
 		goto end;
@@ -1366,7 +1367,7 @@ end:
  * Returns:
  * Zero on success, negative errno on failure.
  */
-int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
+static int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 		    struct drm_file *file_priv)
 {
 	struct drm_framebuffer *fb = NULL;
@@ -1400,7 +1401,6 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_ioctl_rmfb2);
 
 /**
  * msm_ioctl_power_ctrl - enable/disable power vote on MDSS Hw
@@ -1449,6 +1449,8 @@ static int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 
 		if (rc < 0)
 			ctx->enable_refcnt = old_cnt;
+		else
+			rc = 0;
 	}
 
 	pr_debug("pid %d enable %d, refcnt %d, vote_req %d\n",
@@ -1922,8 +1924,8 @@ static int __init msm_drm_register(void)
 	sde_rsc_register();
 	dsi_display_register();
 	msm_hdcp_register();
-	dp_display_register();
 	dp_sim_register();
+	dp_display_register();
 	msm_smmu_driver_init();
 	sde_wb_register();
 	sde_shd_register();
@@ -1941,8 +1943,8 @@ static void __exit msm_drm_unregister(void)
 	sde_shd_unregister();
 	sde_wb_unregister();
 	msm_smmu_driver_cleanup();
-	dp_sim_unregister();
 	dp_display_unregister();
+	dp_sim_unregister();
 	msm_hdcp_unregister();
 	dsi_display_unregister();
 	sde_rsc_unregister();
