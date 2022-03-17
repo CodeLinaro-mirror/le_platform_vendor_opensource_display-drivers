@@ -1067,6 +1067,10 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 		}
 	} else if (config->panel_mode == DSI_OP_CMD_MODE) {
 		/* Calculate the bit rate needed to match dsi transfer time */
+		if (host_cfg->phy_type == DSI_PHY_TYPE_CPHY) {
+			min_dsi_clk_hz *= bits_per_symbol;
+			do_div(min_dsi_clk_hz, num_of_symbols);
+		}
 		bit_rate = min_dsi_clk_hz * frame_time_us;
 		do_div(bit_rate, dsi_transfer_time_us);
 		bit_rate = bit_rate * num_of_lanes;
@@ -1386,6 +1390,10 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 	if (dsi_hw_ops.splitlink_cmd_setup && split_link->enabled)
 		dsi_hw_ops.splitlink_cmd_setup(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config, flags);
+
+	if (dsi_hw_ops.init_cmddma_trig_ctrl)
+		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw,
+				&dsi_ctrl->host_config.common_config);
 
 	/*
 	 * Always enable DMA scheduling for video mode panel.
