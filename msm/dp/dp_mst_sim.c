@@ -23,6 +23,7 @@
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_displayid.h>
 #include "dp_mst_sim.h"
+#include "msm_drv.h"
 
 struct dp_sim_dpcd_reg {
 	struct list_head head;
