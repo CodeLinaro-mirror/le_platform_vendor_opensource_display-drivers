@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_HW_MDSS_H
@@ -174,9 +175,9 @@ enum sde_lm {
 	LM_3,
 	LM_4,
 	LM_5,
+	LM_6,
 	LM_DCWB_DUMMY_0,
 	LM_DCWB_DUMMY_1,
-	LM_6,
 	LM_MAX
 };
 
