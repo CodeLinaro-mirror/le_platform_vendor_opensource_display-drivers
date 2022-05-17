@@ -336,6 +336,8 @@ struct sde_kms {
 	struct irq_affinity_notify affinity_notify;
 
 	struct sde_vm *vm;
+
+	void *recovery_mgr;
 };
 
 struct vsync_info {
