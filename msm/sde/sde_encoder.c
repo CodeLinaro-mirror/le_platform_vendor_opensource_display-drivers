@@ -1897,6 +1897,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 				sw_event, sde_enc->rc_state);
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 				SDE_EVTLOG_ERROR);
+		ret = -EINVAL;
 		goto end;
 	}
 
