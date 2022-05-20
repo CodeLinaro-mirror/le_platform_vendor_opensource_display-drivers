@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_RM_H__
@@ -404,6 +405,18 @@ static inline int sde_rm_topology_get_num_lm(struct sde_rm *rm,
 bool sde_rm_topology_is_group(struct sde_rm *rm,
 		struct drm_crtc_state *state,
 		enum sde_rm_topology_group group);
+
+/**
+ * sde_rm_ext_blk_create_reserve - Create external HW blocks
+ *	in resource manager and reserve for specific encoder.
+ * @rm: SDE Resource Manager handle
+ * @hw: external HW block
+ * @drm_enc: DRM Encoder handle
+ * @Return: 0 on Success otherwise -ERROR
+ */
+int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
+				struct sde_hw_blk *hw,
+				struct drm_encoder *enc);
 
 /**
  * sde_rm_ext_blk_destroy - Given the encoder for the display chain, release
