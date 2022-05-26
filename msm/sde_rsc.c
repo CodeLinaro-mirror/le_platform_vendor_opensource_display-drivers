@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde_rsc:%s:%d]: " fmt, __func__, __LINE__
@@ -262,6 +263,23 @@ bool is_sde_rsc_available(int rsc_index)
 }
 EXPORT_SYMBOL(is_sde_rsc_available);
 
+int get_sde_rsc_primary_crtc(int rsc_index)
+{
+	struct sde_rsc_priv *rsc;
+
+	if (rsc_index >= MAX_RSC_COUNT) {
+		pr_err("invalid rsc index:%d\n", rsc_index);
+		return 0;
+	} else if (!rsc_prv_list[rsc_index]) {
+		pr_debug("rsc idx:%d not probed yet or not available\n",
+								rsc_index);
+		return 0;
+	}
+
+	rsc = rsc_prv_list[rsc_index];
+	return rsc->primary_client ? rsc->primary_client->crtc_id : 0;
+}
+EXPORT_SYMBOL(get_sde_rsc_primary_crtc);
 enum sde_rsc_state get_sde_rsc_current_state(int rsc_index)
 {
 	struct sde_rsc_priv *rsc;
