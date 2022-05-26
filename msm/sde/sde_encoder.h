@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -500,6 +501,14 @@ bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
  */
 bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	struct drm_crtc *drm_crtc);
+
+/**
+ *sde_encoder_is_topology_ppsplit - checks if the current encoder is in
+	ppsplit topology.
+ *@drm_enc:	Pointer to drm encoder structure
+ *@Return:	true if the present topology is ppsplit
+ */
+bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_is_primary_display - checks if underlying display is primary
