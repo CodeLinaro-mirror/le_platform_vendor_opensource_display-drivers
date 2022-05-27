@@ -56,6 +56,7 @@
 #include "sde_reg_dma.h"
 #include "sde_connector.h"
 #include "sde_vm.h"
+#include "sde_recovery_manager.h"
 
 #include <linux/qcom_scm.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
@@ -2256,6 +2257,10 @@ static int sde_kms_postinit(struct msm_kms *kms)
 
 	dev = sde_kms->dev;
 
+	rc = sde_init_recovery_mgr(dev);
+	if (rc)
+		SDE_ERROR("sde_recovery_mgr init failed: %d\n", rc);
+
 	rc = _sde_debugfs_init(sde_kms);
 	if (rc)
 		SDE_ERROR("sde_debugfs init failed: %d\n", rc);
@@ -2434,6 +2439,8 @@ static void sde_kms_destroy(struct msm_kms *kms)
 		SDE_ERROR("invalid device\n");
 		return;
 	}
+
+	sde_deinit_recovery_mgr(dev);
 
 	_sde_kms_hw_destroy(sde_kms, to_platform_device(dev->dev));
 	kfree(sde_kms);

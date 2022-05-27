@@ -43,6 +43,7 @@
 #include "sde_hw_qdss.h"
 #include "sde_encoder_dce.h"
 #include "sde_vm.h"
+#include "sde_recovery_manager.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -3348,6 +3349,9 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 			sde_enc->cur_master->ops.get_underrun_line_count)
 		sde_enc->cur_master->ops.get_underrun_line_count(
 				sde_enc->cur_master);
+	if (drm_enc != NULL)
+		sde_recovery_set_event(drm_enc->dev, DRM_EVENT_SDE_UNDERRUN,
+				drm_enc->crtc);
 
 	trace_sde_encoder_underrun(DRMID(drm_enc),
 		atomic_read(&phy_enc->underrun_cnt));
