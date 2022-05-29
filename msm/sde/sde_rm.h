@@ -427,17 +427,6 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
 				struct drm_encoder *enc);
 
 /**
- * sde_rm_ext_blk_destroy - Given the encoder for the display chain, release
- *	external HW blocks created for that.
- * @rm: SDE Resource Manager handle
- * @enc: DRM Encoder handle
- * @Return: 0 on Success otherwise -ERROR
- */
-int sde_rm_ext_blk_destroy(struct sde_rm *rm,
-				struct drm_atomic_state *state,
-				struct drm_encoder *enc);
-
-/**
  * sde_rm_get_resource_info - returns avail hw resource info
  * @mr: sde rm object
  * @drm_enc: drm encoder object
@@ -446,7 +435,6 @@ int sde_rm_ext_blk_destroy(struct sde_rm *rm,
 void sde_rm_get_resource_info(struct sde_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct msm_resource_caps_info *avail_res);
-
 
 void sde_rm_dec_resource_info(struct sde_rm *rm);
 
