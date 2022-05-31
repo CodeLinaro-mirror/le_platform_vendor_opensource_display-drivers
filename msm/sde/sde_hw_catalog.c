@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -210,6 +211,7 @@ enum sde_prop {
 	BASE_LAYER,
 	TRUSTED_VM_ENV,
 	MAX_TRUSTED_VM_DISPLAYS,
+	LINE_INSERTION,
 	SDE_PROP_MAX,
 };
 
@@ -598,6 +600,7 @@ static struct sde_prop_type sde_prop[] = {
 	{TRUSTED_VM_ENV, "qcom,sde-trusted-vm-env", false, PROP_TYPE_BOOL},
 	{MAX_TRUSTED_VM_DISPLAYS, "qcom,sde-max-trusted-vm-displays", false,
 			PROP_TYPE_U32},
+	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -1903,6 +1906,9 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 			set_bit(SDE_PERF_SSPP_TS_PREFILL_REC1,
 					&sspp->perf_features);
 		}
+
+		if (sde_cfg->has_line_insertion)
+			set_bit(SDE_SSPP_LINE_INSERTION, &sspp->features);
 
 		if (sde_cfg->uidle_cfg.uidle_rev)
 			set_bit(SDE_PERF_SSPP_UIDLE, &sspp->perf_features);
@@ -3965,6 +3971,8 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 			 0);
 	cfg->max_trusted_vm_displays = PROP_VALUE_ACCESS(props->values,
 			MAX_TRUSTED_VM_DISPLAYS, 0);
+	cfg->has_line_insertion = PROP_VALUE_ACCESS(props->values,
+		LINE_INSERTION, 0);
 }
 
 static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)

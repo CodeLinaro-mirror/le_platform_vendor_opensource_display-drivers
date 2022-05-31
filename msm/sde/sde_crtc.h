@@ -478,6 +478,9 @@ enum sde_crtc_dirty_flags {
  * @cp_dirty_list: array tracking features that are dirty
  * @cp_range_payload: array storing state user_data passed via range props
  * @cont_splash_populated: State was populated as part of cont. splash
+ * @padding_height: panel height after line padding
+ * @padding_active: active lines in panel stacking pattern
+ * @padding_dummy: dummy lines in panel stacking pattern
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -519,6 +522,10 @@ struct sde_crtc_state {
 	struct sde_cp_crtc_range_prop_payload
 		cp_range_payload[SDE_CP_CRTC_MAX_FEATURES];
 	bool cont_splash_populated;
+
+	u32 padding_height;
+	u32 padding_active;
+	u32 padding_dummy;
 };
 
 enum sde_crtc_irq_state {
@@ -1058,5 +1065,18 @@ static inline void sde_crtc_state_set_topology_name(
 		break;
 	}
 }
+
+/**
+ * sde_crtc_calc_vpadding_param - calculate vpadding parameters
+ * @state: Pointer to DRM crtc state object
+ * @crtc_y: Plane's CRTC_Y offset
+ * @crtc_h: Plane's CRTC_H size
+ * @padding_y: Padding Y offset
+ * @padding_start: Padding start offset
+ * @padding_height: Padding height in total
+ */
+int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state,
+		uint32_t crtc_y, uint32_t crtc_h, uint32_t *padding_y,
+		uint32_t *padding_start, uint32_t *padding_height);
 
 #endif /* _SDE_CRTC_H_ */

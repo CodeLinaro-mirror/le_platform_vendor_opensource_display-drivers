@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_HW_CATALOG_H
@@ -278,6 +279,7 @@ enum {
  * @SDE_SSPP_FP16_CSC        FP16 CSC color processing block support
  * @SDE_SSPP_FP16_UNMULT     FP16 alpha unmult color processing block support
  * @SDE_SSPP_UBWC_STATS:     Support for ubwc stats
+ * @SDE_SSPP_LINE_INSERTION  Line insertion support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -315,6 +317,7 @@ enum {
 	SDE_SSPP_FP16_CSC,
 	SDE_SSPP_FP16_UNMULT,
 	SDE_SSPP_UBWC_STATS,
+	SDE_SSPP_LINE_INSERTION,
 	SDE_SSPP_MAX
 };
 
@@ -1608,6 +1611,7 @@ struct sde_mdss_cfg {
 	bool delay_prg_fetch_start;
 	bool has_qsync;
 	bool has_3d_merge_reset;
+	bool has_line_insertion;
 	bool has_decimation;
 	bool has_mixer_combined_alpha;
 	bool vbif_disable_inner_outer_shareable;

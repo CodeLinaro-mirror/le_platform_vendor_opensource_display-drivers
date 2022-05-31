@@ -2,6 +2,7 @@
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -740,6 +741,7 @@ struct msm_display_topology {
  * @allowed_mode_switches: bit mask to indicate supported mode switch.
  * @bit_clk_rates: list of supported bit clock rates
  * @bit_clk_count: number of supported bit clock rates
+ * @vpadding:        panel stacking height
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -758,6 +760,7 @@ struct msm_mode_info {
 	u32 allowed_mode_switches;
 	u32 *bit_clk_rates;
 	u32 bit_clk_count;
+	u32 vpadding;
 };
 
 /**
