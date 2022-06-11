@@ -12,7 +12,8 @@ else
 endif
 endif
 
-ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_ARCH_SA8195) $(CONFIG_ARCH_DIREWOLF)))
+ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_ARCH_SA8195) \
+		$(CONFIG_ARCH_DIREWOLF) $(CONFIG_ARCH_LEMANS)))
 	include $(DISPLAY_ROOT)/config/augen3disp.conf
 	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif

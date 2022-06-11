@@ -50,6 +50,7 @@
 #define SDE_HW_VER_720	SDE_HW_VER(7, 2, 0) /* yupik */
 #define SDE_HW_VER_800	SDE_HW_VER(8, 0, 0) /* direwolf */
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
+#define SDE_HW_VER_840	SDE_HW_VER(8, 4, 0) /* lemans */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -77,6 +78,7 @@
 #define IS_YUPIK_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_720)
 #define IS_DIREWOLF_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_800)
 #define IS_WAIPIO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_810)
+#define IS_LEMANS_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_840)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
