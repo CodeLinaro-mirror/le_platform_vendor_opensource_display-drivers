@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_CATALOG_H_
@@ -240,6 +241,7 @@ struct dp_catalog_io {
 	struct dp_io_data *dp_phy;
 	struct dp_io_data *dp_ln_tx0;
 	struct dp_io_data *dp_ln_tx1;
+	struct dp_io_data *ahb2phy;
 	struct dp_io_data *dp_mmss_cc;
 	struct dp_io_data *dp_pll;
 	struct dp_io_data *usb3_dp_com;

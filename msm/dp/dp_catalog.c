@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -2698,6 +2699,7 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(dp_phy);
 	dp_catalog_fill_io_buf(dp_ln_tx0);
 	dp_catalog_fill_io_buf(dp_ln_tx1);
+	dp_catalog_fill_io_buf(ahb2phy);
 	dp_catalog_fill_io_buf(dp_pll);
 	dp_catalog_fill_io_buf(usb3_dp_com);
 	dp_catalog_fill_io_buf(dp_mmss_cc);
@@ -2717,6 +2719,7 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(dp_phy);
 	dp_catalog_fill_io(dp_ln_tx0);
 	dp_catalog_fill_io(dp_ln_tx1);
+	dp_catalog_fill_io(ahb2phy);
 	dp_catalog_fill_io(dp_pll);
 	dp_catalog_fill_io(usb3_dp_com);
 	dp_catalog_fill_io(dp_mmss_cc);
