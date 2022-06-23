@@ -229,7 +229,6 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
  * Head size optimization
  * ---------------------------------------------------------------------------
  */
-
 #if (MAX_BUFS_CNT > 1) || defined(WIRE_USER_PROFILING_ENABLE)
 #define WIRE_HEAP static
 static struct mutex _heap_mutex[PROFILING_MAX + 1];
@@ -3478,7 +3477,7 @@ wire_user_register_event_listener(
 			kfree(node);
 		}
 	} else if (cb_info) {
-		node = kzalloc(sizeof(struct cb_info_node), GFP_KERNEL);
+		node = kzalloc(sizeof(struct cb_info_node), GFP_ATOMIC);
 		if (node) {
 			node->type = type;
 			node->info = *info;
