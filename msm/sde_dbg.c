@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2009-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -292,8 +293,10 @@ struct sde_dbg_base {
 
 /* sde_dbg_base_evtlog - global pointer to main sde event log for macro use */
 struct sde_dbg_evtlog *sde_dbg_base_evtlog;
+#ifdef CONFIG_DEBUG_FS
 static u32 cur_evt_index;
 static DEFINE_MUTEX(sde_dbg_evtlog_mutex);
+#endif
 
 /* sde_dbg_base_reglog - global pointer to main sde reg log for macro use */
 struct sde_dbg_reglog *sde_dbg_base_reglog;
