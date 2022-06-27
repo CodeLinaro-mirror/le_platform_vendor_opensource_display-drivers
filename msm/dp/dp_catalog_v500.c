@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
@@ -11,6 +12,7 @@
 
 #define MMSS_DP_M_OFF				(0x8)
 #define MMSS_DP_N_OFF				(0xC)
+#define AHB2PHY_TOP_CFG			(0x10)
 
 #define dp_catalog_get_priv_v500(x) ({ \
 	struct dp_catalog *catalog; \
@@ -148,6 +150,7 @@ static void dp_catalog_aux_setup_v500(struct dp_catalog_aux *aux,
 	struct dp_catalog_private_v500 *catalog;
 	struct dp_io_data *io_data;
 	u32 revision_id = 0;
+	u32 version = 0;
 	int i = 0;
 
 	if (!aux || !cfg) {
@@ -156,6 +159,14 @@ static void dp_catalog_aux_setup_v500(struct dp_catalog_aux *aux,
 	}
 
 	catalog = dp_catalog_get_priv_v500(aux);
+
+	io_data = catalog->io->dp_ahb;
+	version = dp_read(DP_HW_VERSION);
+	if (version >= 0x10040001) {
+		io_data = catalog->io->ahb2phy;
+		dp_write(AHB2PHY_TOP_CFG, 0x12);
+		wmb(); /* make sure PD programming happened */
+	}
 
 	io_data = catalog->io->dp_phy;
 	/* PHY will not work if DP_PHY_MODE is not set */
