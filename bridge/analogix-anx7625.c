@@ -34,6 +34,7 @@
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_edid.h>
 
+#include <soc/qcom/boot_stats.h>
 #include "analogix-anx7625.h"
 
 #define TX_P0			0x70
@@ -1299,6 +1300,7 @@ static void anx7625_bridge_enable(struct drm_bridge *bridge)
 		DRM_ERROR("Failed to start: %d\n", err);
 
 out:
+	place_marker("drm_bridge display up");
 	mutex_unlock(&anx7625->lock);
 
 	TRACE("anx7625 enabled\n");
