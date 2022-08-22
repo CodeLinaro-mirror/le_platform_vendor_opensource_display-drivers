@@ -936,6 +936,10 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	dp_display->bridge->dp_panel = sde_conn->drv_panel;
 
 	rc = dp_mst_init(dp_display);
+
+	if (dp_display->after_init)
+		rc = dp_display->after_init(dp_display);
+
 end:
 	return rc;
 }
