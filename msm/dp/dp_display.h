@@ -64,6 +64,7 @@ struct dp_display {
 	void *dp_mst_prv_info;
 	void *dp_bond_prv_info;
 	bool force_bond_mode;
+	bool force_connect_mode;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);
