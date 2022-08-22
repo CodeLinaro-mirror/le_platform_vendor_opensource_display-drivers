@@ -131,6 +131,7 @@ struct dp_mst_private {
 	enum dp_drv_state state;
 	bool mst_session_state;
 	struct workqueue_struct *wq;
+	bool first_event;
 };
 
 struct dp_mst_hpd_work {
@@ -2428,8 +2429,8 @@ static void dp_mst_register_fixed_connector(struct drm_connector *connector)
 	/* skip connector registered for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
 		if (dp_mst->mst_bridge[i].fixed_connector == connector) {
-			DP_MST_DEBUG("found fixed connector %d\n",
-					DRMID(connector));
+			DP_MST_DEBUG("found fixed connector %d  crtc %d\n",
+					DRMID(connector), DRMID(connector->state->crtc));
 			goto next;
 		}
 	}
@@ -2625,7 +2626,10 @@ static void dp_mst_display_hpd(void *dp_display, bool hpd_status)
 		rc = mst->mst_fw_cbs->topology_mgr_set_mst(&mst->mst_mgr,
 				hpd_status);
 
-	dp_mst_hpd_event_notify(mst, hpd_status);
+	if (mst->first_event || !dp->force_connect_mode) {
+		dp_mst_hpd_event_notify(mst, hpd_status);
+		mst->first_event = false;
+	}
 
 	DP_MST_INFO_LOG("mst display hpd:%d, rc:%d\n", hpd_status, rc);
 }
@@ -2780,6 +2784,7 @@ int dp_mst_init(struct dp_display *dp_display)
 	}
 
 	dp_mst->mst_initialized = true;
+	dp_mst->first_event = true;
 
 	/* choose fixed callback function if fixed topology is found */
 	if (!dp_display->mst_get_fixed_topology_port(dp_display, 0, NULL))
