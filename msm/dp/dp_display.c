@@ -1646,18 +1646,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		}
 	}
 
-	if (dp->parser->force_connect_mode) {
-		/*
-		 * always enter simulation first regardless of the actual
-		 * connection state to make connector always connected.
-		 * this will fix the corner case when user tries to read
-		 * connector modes when link training is still running.
-		 */
-		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		dp_display_process_hpd_high(dp, true);
-		dp_display_send_hpd_notification(dp);
-	}
-
 	return rc;
 error_hpd_reg:
 	dp_debug_put(dp->debug);
@@ -1709,6 +1697,39 @@ static int dp_display_post_init(struct dp_display *dp_display)
 	dp_display->post_init = NULL;
 end:
 	pr_debug("DP%d %s\n", dp->cell_idx, rc ? "failed" : "success");
+	return rc;
+}
+
+static int dp_display_after_init(struct dp_display *dp_display)
+{
+	int rc = 0;
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		pr_err("invalid input\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (IS_ERR_OR_NULL(dp)) {
+		pr_err("invalid params\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (dp->parser->force_connect_mode) {
+		/*
+		 * always enter simulation first regardless of the actual
+		 * connection state to make connector always connected.
+		 * this will fix the corner case when user tries to read
+		 * connector modes when link training is still running.
+		 */
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		dp_display_process_hpd_high(dp, true);
+		dp_display_send_hpd_notification(dp);
+	}
+end:
 	return rc;
 }
 
@@ -3118,6 +3139,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->get_debug     = dp_get_debug;
 	dp_display->post_open     = NULL;
 	dp_display->post_init     = dp_display_post_init;
+	dp_display->after_init    = dp_display_after_init;
 	dp_display->config_hdr    = dp_display_config_hdr;
 	dp_display->mst_install   = dp_display_mst_install;
 	dp_display->mst_uninstall = dp_display_mst_uninstall;
