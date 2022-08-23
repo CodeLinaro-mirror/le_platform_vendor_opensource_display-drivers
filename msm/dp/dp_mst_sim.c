@@ -488,6 +488,18 @@ int dp_sim_read_dpcd_reg(struct msm_dp_aux_bridge *bridge,
 	return dp_sim_read_dpcd_regs(sim_dev, dpcd, size, offset);
 }
 
+bool dp_sim_is_skip_mst(struct msm_dp_aux_bridge *bridge)
+{
+	struct dp_sim_device *sim_dev;
+
+	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
+		return false;
+
+	sim_dev = to_dp_sim_dev(bridge);
+
+	return (sim_dev->sim_mode & DP_SIM_MODE_MST) || sim_dev->skip_mst;
+}
+
 static void dp_sim_update_dtd(struct edid *edid,
 		struct drm_display_mode *mode)
 {

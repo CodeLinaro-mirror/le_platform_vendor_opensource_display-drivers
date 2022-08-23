@@ -41,4 +41,6 @@ int dp_sim_write_dpcd_reg(struct msm_dp_aux_bridge *bridge,
 int dp_sim_read_dpcd_reg(struct msm_dp_aux_bridge *bridge,
 		u8 *dpcd, u32 size, u32 offset);
 
+bool dp_sim_is_skip_mst(struct msm_dp_aux_bridge *bridge);
+
 #endif /* _DP_MST_SIM_H_ */
