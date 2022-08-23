@@ -1332,6 +1332,11 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		/* Bytes [44 to 57] are buf_thresh[0] ... [13] */
 		dsc_info->buf_thresh =
 			devm_kzalloc(&parser->pdev->dev, (sizeof(u32) * 14), GFP_KERNEL);
+		if (!dsc_info->buf_thresh) {
+			pr_err("Error alloc failed\n");
+			goto error;
+		}
+
 		for (i = 0 ; i < 14 ; i++)
 			dsc_info->buf_thresh[i] =
 					read_char_from_byte_stream(data, &parsed);
@@ -1342,10 +1347,25 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		 */
 		dsc_info->range_min_qp =
 			devm_kzalloc(&parser->pdev->dev, (sizeof(char) * 15), GFP_KERNEL);
+		if (!dsc_info->range_min_qp) {
+			pr_err("Error alloc failed\n");
+			goto error;
+		}
+
 		dsc_info->range_max_qp =
 			devm_kzalloc(&parser->pdev->dev, (sizeof(char) * 15), GFP_KERNEL);
+		if (!dsc_info->range_max_qp) {
+			pr_err("Error alloc failed\n");
+			goto error;
+		}
+
 		dsc_info->range_bpg_offset =
 			devm_kzalloc(&parser->pdev->dev, (sizeof(char) * 15), GFP_KERNEL);
+		if (!dsc_info->range_bpg_offset) {
+			pr_err("Error alloc failed\n");
+			goto error;
+		}
+
 		for (i = 0 ; i < 15 ; i++) {
 			dsc_info->range_min_qp[i] =
 					read_n_bits_from_byte_stream(data, &parsed, 7, 5);

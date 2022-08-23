@@ -712,7 +712,7 @@ static void sde_encoder_phys_vid_mode_set(
 	struct sde_rm_hw_iter iter;
 	int i, instance, rc;
 	struct sde_encoder_phys_vid *vid_enc;
-	struct dp_display_mode usr_mode;
+	struct dp_display_mode usr_mode = {0};
 	bool is_dsc_passthrough = false;
 
 	if (!phys_enc || !phys_enc->sde_kms) {
