@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/sde_drm.h>
@@ -56,6 +57,12 @@ struct sde_shd_hw_mixer {
 	struct sde_rect roi;
 	struct sde_hw_mixer *orig;
 	struct sde_shd_mixer_cfg cfg[SDE_STAGE_MAX];
+};
+
+struct sde_shd_hw_dspp {
+	struct sde_hw_dspp base;
+	const char *shd_name;
+	struct sde_hw_dspp *orig;
 };
 
 struct sde_shd_hw_roi_misr {

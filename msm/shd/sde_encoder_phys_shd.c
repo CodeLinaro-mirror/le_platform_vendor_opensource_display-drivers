@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -36,18 +37,22 @@
  * @base:	Baseclass physical encoder structure
  * @hw_lm:	HW LM blocks created by this shared encoder
  * @hw_ctl:	HW CTL blocks created by this shared encoder
+ * @hw_dspp:	HW DSPP blocks created by this shared encoder
  * @hw_roi_misr:	HW ROI MISR blocks created by this shared encoder
  * @num_mixers:	Number of LM blocks
  * @num_ctls:	Number of CTL blocks
+ * @num_dspps:	Number of DSPP blocks
  * @num_roi_misrs:	Number of ROI MISR blocks
  */
 struct sde_encoder_phys_shd {
 	struct sde_encoder_phys base;
 	struct sde_hw_mixer *hw_lm[MAX_MIXERS_PER_CRTC];
 	struct sde_hw_ctl *hw_ctl[MAX_MIXERS_PER_CRTC];
+	struct sde_hw_dspp *hw_dspp[MAX_MIXERS_PER_CRTC];
 	struct sde_hw_roi_misr *hw_roi_misr[MAX_MIXERS_PER_CRTC];
 	u32 num_mixers;
 	u32 num_ctls;
+	u32 num_dspps;
 	u32 num_roi_misrs;
 };
 
@@ -213,12 +218,14 @@ static int _sde_encoder_phys_shd_rm_reserve(
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter,
+			dspp_iter, roi_misr_iter;
 	struct drm_encoder *encoder;
 	struct drm_connector_state *conn_state;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_pingpong *hw_pp;
+	struct sde_shd_hw_dspp *hw_dspp;
 	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int i, rc = 0;
 	int num_mixers = 0;
@@ -246,6 +253,7 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&dspp_iter, DRMID(encoder), SDE_HW_BLK_DSPP);
 	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
 			SDE_HW_BLK_ROI_MISR);
 
@@ -290,6 +298,29 @@ static int _sde_encoder_phys_shd_rm_reserve(
 			&hw_pp->base, phys_enc->parent);
 		if (rc) {
 			SDE_ERROR("failed to create & reserve pingpong\n");
+			break;
+		}
+	}
+
+	for (i = 0; i < num_mixers; i++) {
+		/* reserve dspp */
+		if (!sde_rm_atomic_get_hw(rm, state, &dspp_iter))
+			break;
+		hw_dspp = container_of(shd_enc->hw_dspp[i],
+				struct sde_shd_hw_dspp, base);
+		hw_dspp->base = *(struct sde_hw_dspp *)dspp_iter.hw;
+		hw_dspp->orig = dspp_iter.hw;
+		hw_dspp->shd_name = display->name;
+
+		SDE_DEBUG("reserve DSPP%d from enc %d to %d\n",
+			hw_dspp->base.idx,
+			DRMID(encoder),
+			DRMID(phys_enc->parent));
+
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
+			&hw_dspp->base.base, phys_enc->parent);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve dspp\n");
 			break;
 		}
 	}
@@ -350,7 +381,8 @@ static void _sde_encoder_phys_shd_setup(
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter,
+			dspp_iter, roi_misr_iter;
 	struct drm_encoder *encoder;
 	int i;
 
@@ -361,17 +393,25 @@ static void _sde_encoder_phys_shd_setup(
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&dspp_iter, DRMID(encoder), SDE_HW_BLK_DSPP);
 	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
 			SDE_HW_BLK_ROI_MISR);
 
 	shd_enc->num_mixers = 0;
 	shd_enc->num_ctls = 0;
+	shd_enc->num_dspps = 0;
 	shd_enc->num_roi_misrs = 0;
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		if (!sde_rm_get_hw(rm, &lm_iter))
 			break;
 		shd_enc->num_mixers++;
+	}
+
+	for (i = 0; i < shd_enc->num_mixers; i++) {
+		if (!sde_rm_get_hw(rm, &dspp_iter))
+			break;
+		shd_enc->num_dspps++;
 	}
 
 	for (i = 0; i < shd_enc->num_mixers; i++) {
@@ -800,6 +840,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 	struct sde_encoder_irq *irq;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
+	struct sde_shd_hw_dspp *hw_dspp;
 	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int ret = 0, i;
 
@@ -825,6 +866,13 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 			goto fail_ctl;
 		}
 		shd_enc->hw_lm[i] = &hw_lm->base;
+
+		hw_dspp = kzalloc(sizeof(*hw_dspp), GFP_KERNEL);
+		if(!hw_dspp) {
+			ret = -ENOMEM;
+			goto fail_ctl;
+		}
+		shd_enc->hw_dspp[i] = &hw_dspp->base;
 
 		hw_roi_misr = kzalloc(sizeof(*hw_roi_misr), GFP_KERNEL);
 		if (!hw_roi_misr) {
@@ -880,6 +928,7 @@ fail_ctl:
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		kfree(shd_enc->hw_ctl[i]);
 		kfree(shd_enc->hw_lm[i]);
+		kfree(shd_enc->hw_dspp[i]);
 		kfree(shd_enc->hw_roi_misr[i]);
 	}
 	kfree(shd_enc);
