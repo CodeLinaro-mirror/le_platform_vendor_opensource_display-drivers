@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -69,6 +70,7 @@ static int default_last_command(struct sde_hw_ctl *ctl,
 
 static void default_dump_reg(void)
 {
+	DRM_ERROR("not implemented\n");
 }
 
 static struct sde_hw_reg_dma reg_dma = {
