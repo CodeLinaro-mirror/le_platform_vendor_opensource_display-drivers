@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -350,17 +351,10 @@ static int shd_crtc_atomic_set_property(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
-	struct sde_cp_node_dummy *prop_node;
 
 	if (!crtc || !state || !property) {
 		SDE_ERROR("invalid argument(s)\n");
 		return -EINVAL;
-	}
-
-	/* ignore all the dspp properties */
-	list_for_each_entry(prop_node, &sde_crtc->feature_list, feature_list) {
-		if (property->base.id == prop_node->property_id)
-			return 0;
 	}
 
 	return shd_crtc->orig_funcs->atomic_set_property(crtc,
