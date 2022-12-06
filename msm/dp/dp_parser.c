@@ -232,6 +232,16 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->link_training_retries = MAX_DP_LINK_TRAINING_RETRIES;
 
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-v-level", &parser->link_training_min_vlevel);
+	if (rc)
+		parser->link_training_min_vlevel = 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-p-level", &parser->link_training_min_plevel);
+	if (rc)
+		parser->link_training_min_plevel = 0;
+
 	return 0;
 }
 
