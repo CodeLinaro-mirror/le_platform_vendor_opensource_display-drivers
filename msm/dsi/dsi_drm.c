@@ -73,6 +73,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->timing.vdc = &dsi_mode->priv_info->vdc;
 		dsi_mode->timing.pclk_scale = dsi_mode->priv_info->pclk_scale;
 		dsi_mode->timing.clk_rate_hz = dsi_mode->priv_info->clk_rate_hz;
+		dsi_mode->timing.pixel_clk_hz_override =
+				dsi_mode->priv_info->pixel_clk_hz_override;
 	}
 
 	if (msm_is_mode_seamless(msm_mode))
@@ -640,12 +642,6 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->disable_rsc_solver = dsi_mode->priv_info->disable_rsc_solver;
 	mode_info->qsync_min_fps = dsi_mode->timing.qsync_min_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
-
-	mode_info->vpadding = dsi_display->panel->host_config.vpadding;
-	if (mode_info->vpadding < drm_mode->vdisplay) {
-		mode_info->vpadding = 0;
-		dsi_display->panel->host_config.line_insertion_enable = 0;
-	}
 
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
