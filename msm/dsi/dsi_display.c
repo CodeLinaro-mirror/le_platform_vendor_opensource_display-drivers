@@ -660,7 +660,10 @@ static void dsi_display_parse_te_data(struct dsi_display *display)
 		rc = of_property_read_u32(dev->of_node,
 			"qcom,panel-te-source", &val);
 
-	if (rc || (val  > MAX_TE_SOURCE_ID)) {
+	if (rc) {
+		pr_debug("no vsync source selection\n");
+		val = 0;
+	} else if (val  > MAX_TE_SOURCE_ID) {
 		pr_err("invalid vsync source selection\n");
 		val = 0;
 	}
