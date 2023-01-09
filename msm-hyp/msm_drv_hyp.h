@@ -43,6 +43,7 @@
 #include "msm_drv.h"
 
 #define DRM_DRI_NAME_SIZE 32
+#define MSM_HYP_MAX_PLANES 4
 
 struct msm_hyp_connector_info {
 	int connector_type;
@@ -146,7 +147,6 @@ struct msm_hyp_crtc_state {
 
 struct msm_hyp_framebuffer {
 	struct drm_framebuffer base;
-	struct drm_gem_object *bo;
 	struct msm_hyp_framebuffer_info *info;
 };
 
