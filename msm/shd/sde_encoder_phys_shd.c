@@ -13,6 +13,7 @@
 #include "sde_formats.h"
 #include "sde_hw_top.h"
 #include "sde_hw_interrupts.h"
+#include "sde_hw_dsc.h"
 #include "sde_core_irq.h"
 #include "sde_crtc.h"
 #include "sde_trace.h"
@@ -276,12 +277,13 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
 	struct sde_enc_shd_state *shd_enc_state;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, dsc_iter, roi_misr_iter;
 	struct drm_encoder *encoder;
 	struct drm_connector_state *conn_state;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_pingpong *hw_pp;
+	struct sde_hw_dsc *hw_dsc;
 	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int i, rc = 0;
 
@@ -312,6 +314,7 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&dsc_iter, DRMID(encoder), SDE_HW_BLK_DSC);
 	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
 			SDE_HW_BLK_ROI_MISR);
 
@@ -392,6 +395,25 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	}
 
 	for (i = 0; i < shd_enc_state->num_mixers; i++) {
+		/* reserve dsc */
+		if (!sde_rm_atomic_get_hw(rm, state, &dsc_iter))
+			break;
+		hw_dsc = dsc_iter.hw;
+
+		SDE_DEBUG("reserve DSC%d from enc %d to %d\n",
+			hw_dsc->idx,
+			DRMID(encoder),
+			DRMID(phys_enc->parent));
+
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
+			&hw_dsc->base, phys_enc->parent);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve dsc\n");
+			break;
+		}
+	}
+
+	for (i = 0; i < shd_enc_state->num_mixers; i++) {
 		/* reserve roi_misr */
 		if (!(rc = sde_rm_atomic_get_hw(rm, state, &roi_misr_iter)))
 			break;
@@ -425,6 +447,9 @@ static int _sde_encoder_phys_shd_rm_reserve(
 		hw_ctl->base = *(struct sde_hw_ctl *)ctl_iter.hw;
 		hw_ctl->range = display->stage_range;
 		hw_ctl->orig = ctl_iter.hw;
+		if (shd_enc_state->hw_ctl[i])
+			hw_ctl->dsc_cfg = container_of(shd_enc_state->hw_ctl[i],
+					struct sde_shd_hw_ctl, base)->dsc_cfg;
 		sde_shd_hw_ctl_init_op(&hw_ctl->base);
 
 		SDE_DEBUG("reserve CTL%d %pK from enc %d to %d\n",

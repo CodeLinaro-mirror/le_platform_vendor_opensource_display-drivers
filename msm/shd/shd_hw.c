@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -578,7 +578,10 @@ static int _sde_shd_setup_dsc_cfg(struct sde_hw_ctl *ctx,
 		return -EINVAL;
 
 	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
-	hw_ctl->dsc_cfg = *cfg;
+	if (memcmp(&hw_ctl->dsc_cfg, cfg, sizeof(*cfg))) {
+		hw_ctl->dsc_cfg = *cfg;
+		hw_ctl->dsc_cfg_updated = true;
+	}
 
 	return 0;
 }
@@ -589,8 +592,10 @@ static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
 
 	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
 
-	if (hw_ctl->orig->ops.setup_dsc_cfg)
+	if (hw_ctl->dsc_cfg_updated && hw_ctl->orig->ops.setup_dsc_cfg) {
 		hw_ctl->orig->ops.setup_dsc_cfg(ctl_ctx, &hw_ctl->dsc_cfg);
+		hw_ctl->dsc_cfg_updated = false;
+	}
 }
 
 void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
@@ -615,12 +620,7 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 	for (i = 0; i < misr_num; i++)
 		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
 
-	/*
-	 * Ther is no point of handle the DSC config separatedly for each
-	 * individual shared display. Let base display setup it up.
-	 */
-	if (0)
-		_sde_shd_flush_hw_dsc_config(ctl_ctx);
+	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 
 	if (ctl_ctx->ops.trigger_flush)
 		ctl_ctx->ops.trigger_flush(ctl_ctx);
