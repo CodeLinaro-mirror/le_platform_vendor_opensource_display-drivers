@@ -67,8 +67,8 @@ enum payload_types {
 };
 
 struct wire_header {
-	u32 magic_num;
-	u32 version;
+	volatile u32 magic_num;
+	volatile u32 version;
 	enum payload_types payload_type;
 	u32 id;
 	u32 payload_size;
