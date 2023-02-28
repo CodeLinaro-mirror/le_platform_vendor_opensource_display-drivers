@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1546,6 +1547,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		int idx;
 		int dp_stream_count;
 		u32 dp_intf_idx[DP_STREAM_MAX];
+		struct dp_display_info dp_info = {0};
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -1556,6 +1558,17 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("dp get_info %d failed\n", i);
 			continue;
 		}
+
+		rc = dp_display_get_info(display, &dp_info);
+		if (rc) {
+			SDE_ERROR("failed to read dp info, %d\n", rc);
+			continue;
+		}
+
+		info.border_color_en = dp_info.border_color_en;
+		if (info.border_color_en)
+			memcpy(&info.border_color, &dp_info.border_color,
+					sizeof(dp_info.border_color));
 
 		encoder = sde_encoder_init(dev, &info);
 		if (IS_ERR_OR_NULL(encoder)) {

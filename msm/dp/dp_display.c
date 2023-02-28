@@ -139,6 +139,9 @@ struct dp_display_private {
 	struct device *msm_hdcp_dev;
 
 	struct sde_power_client *cont_splash_client;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -579,6 +582,48 @@ static int dp_display_get_cell_info(struct dp_display_private *dp)
 
 	of_property_read_u32(of_node,
 			"cell-index", &dp->cell_idx);
+
+	return 0;
+}
+
+static int dp_display_get_border_color_info(struct dp_display_private *dp)
+{
+	struct device_node *of_node = dp->pdev->dev.of_node;
+	int rc = 0;
+	int i, count = 0;
+	u32 color[4] = {0};
+
+	count = of_property_count_u32_elems(of_node, "qcom,border-color");
+
+	if (count > 0) {
+		if (count != 4) {
+			pr_warn("Border color num doesn't match\n");
+			return 0;
+		}
+
+		for (i = 0; i < count; i++) {
+			rc = of_property_read_u32_index(of_node,
+					"qcom,border-color", i, &color[i]);
+		}
+
+		dp->border_color = (struct sde_drm_color) {
+					color[0],
+					color[1],
+					color[2],
+					color[3],
+		};
+
+		dp->border_color_en = true;
+	} else {
+		pr_debug("Border color not enabled\n");
+		return 0;
+	}
+
+	SDE_DEBUG(" dp->border_color :{%d,%d,%d,%d}\n",
+			dp->border_color.color_0,
+			dp->border_color.color_1,
+			dp->border_color.color_2,
+			dp->border_color.color_3);
 
 	return 0;
 }
@@ -3163,6 +3208,10 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	rc = dp_display_get_border_color_info(dp);
+	if (rc)
+		goto error;
+
 	rc = dp_parser_msm_hdcp_dev(dp);
 	if (rc)
 		goto error;
@@ -3355,6 +3404,11 @@ int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info)
 	for (i = 0; i < DP_STREAM_MAX; i++)
 		dp_info->intf_idx[i] = dp->intf_idx[i];
 	dp_info->phy_idx = dp->phy_idx;
+
+	dp_info->border_color_en = dp->border_color_en;
+	if (dp_info->border_color_en)
+		memcpy(&dp_info->border_color, &dp->border_color,
+				sizeof(dp->border_color));
 
 	return 0;
 }

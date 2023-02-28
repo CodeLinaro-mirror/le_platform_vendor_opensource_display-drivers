@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -496,6 +496,8 @@ struct msm_mode_info {
  * @roi_caps:           Region of interest capability info
  * @qsync_min_fps	Minimum fps supported by Qsync feature
  * @te_source		vsync source pin information
+ * @border_color_en:    Set to true if display need border color
+ * @border_color:       Border color include 8 bit color info G, B, R, A
  */
 struct msm_display_info {
 	int intf_type;
@@ -519,6 +521,9 @@ struct msm_display_info {
 
 	uint32_t qsync_min_fps;
 	uint32_t te_source;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 #define MSM_MAX_ROI	4

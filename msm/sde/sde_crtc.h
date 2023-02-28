@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -233,6 +234,8 @@ struct sde_crtc_fps_info {
  * @plane_mask_old: keeps track of the planes used in the previous commit
  * @post_commit_fence_ctx: post-commit fence context of this crtc
  * @roi_misr_data: roi misr related fence, event and hw config data
+ * @border_color_en: Set to true if ctrc need to set border color
+ * @border_color   : Border color include 8 bit color info G, B, R, A
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -317,6 +320,9 @@ struct sde_crtc {
 
 	struct sde_post_commit_fence_context post_commit_fence_ctx;
 	struct sde_misr_crtc_data roi_misr_data;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 #define to_sde_crtc(x) container_of(x, struct sde_crtc, base)

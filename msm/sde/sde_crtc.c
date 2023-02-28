@@ -2,7 +2,7 @@
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -47,6 +47,14 @@
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
+
+/**
+ * Convert a color from 8bits to 12 bits
+ *
+ * This simplified calculation is not perfect but approximates by
+ * just shift 4 bits to the left and repeat the most significant nibble
+ */
+#define SDE_COLOR_8_TO_12BITS(color) (((color) << 4) | ((color) >> 4))
 
 struct sde_crtc_custom_events {
 	u32 event;
@@ -1740,6 +1748,34 @@ done:
 	return 0;
 }
 
+static void _sde_crtc_program_lm_border_color(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_hw_mixer *hw_lm;
+	struct sde_mdss_color color = {0};
+	int lm_idx;
+
+	if (!crtc)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	if (!sde_crtc->border_color_en)
+		return;
+
+	for (lm_idx = 0; lm_idx < sde_crtc->num_mixers; lm_idx++) {
+		hw_lm = sde_crtc->mixers[lm_idx].hw_lm;
+		if (hw_lm->ops.setup_border_color) {
+			color.color_0 = SDE_COLOR_8_TO_12BITS(sde_crtc->border_color.color_0);
+			color.color_1 = SDE_COLOR_8_TO_12BITS(sde_crtc->border_color.color_1);
+			color.color_2 = SDE_COLOR_8_TO_12BITS(sde_crtc->border_color.color_2);
+			color.color_3 = SDE_COLOR_8_TO_12BITS(sde_crtc->border_color.color_3);
+			hw_lm->ops.setup_border_color(hw_lm, &color,
+					sde_crtc->border_color_en);
+		}
+	}
+}
+
 static void _sde_crtc_program_lm_output_roi(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
@@ -2339,6 +2375,7 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 	}
 
 	_sde_crtc_program_lm_output_roi(crtc);
+	_sde_crtc_program_lm_border_color(crtc);
 }
 
 int sde_crtc_find_plane_fb_modes(struct drm_crtc *crtc,

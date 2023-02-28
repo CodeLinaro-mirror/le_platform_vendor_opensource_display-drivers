@@ -241,6 +241,8 @@ enum sde_enc_rc_states {
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
  *				after power collapse
  * @pm_qos_cpu_req:		pm_qos request for cpu frequency
+ * @border_color_en:		Set to true if ctrc need to set border color
+ * @border_color		Border color include 8 bit color info G, B, R, A
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -305,6 +307,10 @@ struct sde_encoder_virt {
 	bool recovery_events_enabled;
 	bool elevated_ahb_vote;
 	struct pm_qos_request pm_qos_cpu_req;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
+
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -3345,6 +3351,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct sde_kms *sde_kms;
 	struct list_head *connector_list;
 	struct drm_connector *conn = NULL, *conn_iter;
+	struct sde_crtc *sde_crtc;
 	struct sde_rm_hw_iter dsc_iter, pp_iter, qdss_iter;
 	struct sde_rm_hw_iter lm_iter;
 	struct sde_rm_hw_request request_hw;
@@ -3383,6 +3390,11 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		return;
 	}
 	sde_enc->crtc = drm_enc->crtc;
+	sde_crtc = to_sde_crtc(drm_enc->crtc);
+	sde_crtc->border_color_en = sde_enc->border_color_en;
+	if (sde_crtc->border_color_en)
+		memcpy(&sde_crtc->border_color, &sde_enc->border_color,
+				sizeof(sde_enc->border_color));
 
 	list_for_each_entry(conn_iter, connector_list, head)
 		if (conn_iter->encoder == drm_enc)
@@ -5898,6 +5910,11 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	sde_enc->te_source = disp_info->te_source;
 
 	SDE_DEBUG("disp_info->num_of_h_tiles %d\n", disp_info->num_of_h_tiles);
+
+	sde_enc->border_color_en = disp_info->border_color_en;
+	if (sde_enc->border_color_en)
+		memcpy(&sde_enc->border_color, &disp_info->border_color,
+				sizeof(disp_info->border_color));
 
 	if ((disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE) ||
 	    (disp_info->capabilities & MSM_DISPLAY_CAP_VID_MODE))
