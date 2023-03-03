@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_CONNECTOR_H_
@@ -341,6 +342,16 @@ struct sde_connector_ops {
 	 */
 	int (*get_tile_map)(struct drm_connector *connector,
 			void *display, int num_tile, int *tile_map);
+};
+
+/**
+ * enum sde_connector_display_type - list of display types
+ */
+enum sde_connector_display {
+	SDE_CONNECTOR_UNDEFINED,
+	SDE_CONNECTOR_PRIMARY,
+	SDE_CONNECTOR_SECONDARY,
+	SDE_CONNECTOR_MAX,
 };
 
 /**

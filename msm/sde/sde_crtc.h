@@ -29,6 +29,7 @@
 #include "sde_hw_blk.h"
 #include "sde_hw_ds.h"
 #include "sde_fence_post_commit.h"
+#include "sde_encoder.h"
 #include "sde_roi_misr.h"
 
 #define SDE_CRTC_NAME_SIZE	12

@@ -24,6 +24,8 @@
 
 #include "msm_prop.h"
 #include "sde_hw_mdss.h"
+#include "sde_connector.h"
+#include "sde_roi_misr.h"
 
 #define MAX_CHANNELS_PER_ENC 6
 #define SDE_ENCODER_FRAME_EVENT_DONE			BIT(0)
@@ -43,7 +45,7 @@
  * @needs_cdm:	Encoder requests a CDM based on pixel format conversion needs
  * @display_num_of_h_tiles: Number of horizontal tiles in case of split
  *                          interface
- * @is_primary: set to true if the display is primary display
+ * @display_type: Type of the display
  * @topology:   Topology of the display
  * @cwb_pp_ratio: pingpong ratio for pingpong hardware reservation in cwb case
  */
@@ -52,7 +54,7 @@ struct sde_encoder_hw_resources {
 	enum sde_intf_mode wbs[WB_MAX];
 	bool needs_cdm;
 	u32 display_num_of_h_tiles;
-	bool is_primary;
+	enum sde_connector_display display_type;
 	struct msm_display_topology topology;
 	uint32_t cwb_pp_ratio;
 };

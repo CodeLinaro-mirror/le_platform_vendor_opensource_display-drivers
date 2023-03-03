@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_ROI_MISR_H
 #define _SDE_ROI_MISR_H
 
 #include <drm/sde_drm.h>
-#include "sde_encoder.h"
 #include "sde_hw_roi_misr.h"
 #include "sde_hw_dspp.h"
 #include "sde_fence_post_commit.h"
