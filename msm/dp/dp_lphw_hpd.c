@@ -183,8 +183,23 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 		if (!(isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS
 			| DP_IRQ_HPD_INT_STATUS)) && !lphw_hpd->hpd)
 			pr_debug("connect but no interrupt, hpd isr state: 0x%x\n", isr);
-		if (isr & DP_HPD_UNPLUG_INT_STATUS)
-			pr_info("missed disconnect interrupt, hpd isr state: 0x%x\n", isr);
+		if (isr & DP_HPD_UNPLUG_INT_STATUS) {
+			if (lphw_hpd->base.hpd_high) {
+				pr_info("missed disconnect interrupt, hpd isr state: 0x%x\n", isr);
+				lphw_hpd->hpd = false;
+				lphw_hpd->base.hpd_high = false;
+				lphw_hpd->base.alt_mode_cfg_done = false;
+				lphw_hpd->base.hpd_irq = false;
+
+				rc = queue_work(lphw_hpd->connect_wq,
+						&lphw_hpd->disconnect);
+				if (!rc)
+					pr_debug("disconnect not queued\n");
+			} else {
+				pr_info("missed multiple disconnect/connect interrupts, hpd isr state: 0x%x\n",
+						isr);
+			}
+		}
 		break;
 	case DP_HPD_STATUS_HPD_IO_GLITCH_COUNT:
 		pr_info("hpd io glich counting, hpd isr state: 0x%x\n", isr);
