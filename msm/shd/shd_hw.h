@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/sde_drm.h>
@@ -38,6 +39,7 @@ struct sde_shd_hw_ctl {
 	u32 merge_3d_active;
 
 	struct sde_ctl_dsc_cfg dsc_cfg;
+	bool dsc_cfg_updated;
 };
 
 struct sde_shd_mixer_cfg {

@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -1030,8 +1031,9 @@ static int sde_encoder_virt_atomic_check(
 				ret = -EINVAL;
 
 		if (ret) {
-			SDE_ERROR_ENC(sde_enc,
-					"mode unsupported, phys idx %d\n", i);
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
 			return ret;
 		}
 	}
@@ -2078,6 +2080,40 @@ static int _sde_encoder_dsc_3_lm_3_enc_3_intf(struct sde_encoder_virt *sde_enc,
 	return 0;
 }
 
+static int _sde_encoder_dsc_shd(struct sde_encoder_virt *sde_enc,
+		struct sde_encoder_kickoff_params *params)
+{
+	struct sde_encoder_phys *enc_master = sde_enc->cur_master;
+	struct sde_hw_ctl *hw_ctl = enc_master->hw_ctl;
+	struct sde_ctl_dsc_cfg cfg;
+	int i;
+
+	memset(&cfg, 0, sizeof(cfg));
+
+	for (i = 0; i < params->num_channels; i++) {
+		if (!sde_enc->hw_dsc[i]) {
+			SDE_ERROR_ENC(sde_enc, "invalid params for DSC\n");
+			return -EINVAL;
+		}
+		cfg.dsc[i] = sde_enc->hw_dsc[i]->idx;
+		cfg.dsc_count++;
+		if (hw_ctl->ops.update_bitmask_dsc)
+			hw_ctl->ops.update_bitmask_dsc(hw_ctl, cfg.dsc[i], 1);
+	}
+
+	/* setup dsc active configuration in the control path */
+	if (hw_ctl->ops.setup_dsc_cfg) {
+		hw_ctl->ops.setup_dsc_cfg(hw_ctl, &cfg);
+		SDE_DEBUG_ENC(sde_enc,
+				"setup_dsc_cfg hw_ctl[%d], count:%d, dsc:%d,%d,%d,%d,%d,%d\n",
+				hw_ctl->idx, cfg.dsc_count,
+				cfg.dsc[0], cfg.dsc[1], cfg.dsc[2], cfg.dsc[3],
+				cfg.dsc[4], cfg.dsc[5]);
+	}
+
+	return 0;
+}
+
 static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
@@ -2162,6 +2198,8 @@ static int _sde_encoder_dsc_setup(struct sde_encoder_virt *sde_enc,
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
 			&sde_enc->prv_conn_roi))
 		return ret;
+	if (to_sde_connector(drm_conn)->shared)
+		return _sde_encoder_dsc_shd(sde_enc, params);
 
 	switch (topology) {
 	case SDE_RM_TOPOLOGY_SINGLEPIPE_DSC:

@@ -791,6 +791,7 @@ static int shd_connector_get_mode_info(struct drm_connector *connector,
 		max_mixer_width,
 		base_conn->display);
 	mode_info->topology = base_mode_info.topology;
+	mode_info->comp_info = base_mode_info.comp_info;
 
 	if (shd_display->src.h != shd_display->roi.h)
 		mode_info->vpadding = shd_display->roi.h;
