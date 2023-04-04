@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
@@ -121,5 +122,14 @@ void dp_hpd_put(struct dp_hpd *dp_hpd)
 	default:
 		pr_err("unknown hpd type %d\n", dp_hpd->type);
 		break;
+	}
+}
+
+void dp_hpd_ignore_irq(struct dp_hpd *dp_hpd, bool flags)
+{
+	if (dp_hpd->type == DP_HPD_GPIO) {
+		dp_gpio_ignore_irq(dp_hpd, flags);
+	} else {
+		pr_info("HPD type is not DP_HPD_GPIO\n");
 	}
 }

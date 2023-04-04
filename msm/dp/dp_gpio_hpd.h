@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -28,5 +29,16 @@ struct dp_hpd *dp_gpio_hpd_get(struct device *dev,
  * @hpd: instance of gpio_hpd
  */
 void dp_gpio_hpd_put(struct dp_hpd *hpd);
+/**
+ * dp_gpio_ignore_irq()
+ *
+ * Ignores the connect callback created
+ * during suspend of the DP due to HPD IRQ.
+ *
+ * @hpd: instance of gpio_hpd
+ *
+ * @flags: Set to true during suspend
+ */
+void dp_gpio_ignore_irq(struct dp_hpd *hpd, bool flags);
 
 #endif /* _DP_GPIO_HPD_H_ */

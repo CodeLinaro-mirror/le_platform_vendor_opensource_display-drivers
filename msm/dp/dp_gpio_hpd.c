@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
@@ -25,6 +26,7 @@ struct dp_gpio_hpd_private {
 	struct dp_hpd_cb *cb;
 	int irq;
 	int edge;
+	int ignore_hpd_irq;
 };
 
 static int dp_gpio_hpd_connect(struct dp_gpio_hpd_private *gpio_hpd, bool hpd)
@@ -50,6 +52,11 @@ static int dp_gpio_hpd_connect(struct dp_gpio_hpd_private *gpio_hpd, bool hpd)
 	}
 
 	pr_info("%s hpd=%d\n", gpio_hpd->gpio_cfg.gpio_name, hpd);
+
+	if (gpio_hpd->ignore_hpd_irq == true) {
+		pr_info("Ignore hpd irq was set. skip below\n");
+		return 0;
+	}
 
 	if (hpd)
 		rc = gpio_hpd->cb->configure(gpio_hpd->dev);
@@ -342,6 +349,7 @@ struct dp_hpd *dp_gpio_hpd_get(struct device *dev,
 	gpio_hpd->dev = dev;
 	gpio_hpd->cb = cb;
 	gpio_hpd->irq = gpio_to_irq(gpio_hpd->gpio_cfg.gpio);
+	gpio_hpd->ignore_hpd_irq = false;
 
 	gpio_hpd->wq = create_singlethread_workqueue("dp-gpio-hpd-wq");
 	if (!gpio_hpd->wq) {
@@ -374,4 +382,15 @@ void dp_gpio_hpd_put(struct dp_hpd *dp_hpd)
 
 	gpio_free(gpio_hpd->gpio_cfg.gpio);
 	devm_kfree(gpio_hpd->dev, gpio_hpd);
+}
+
+void dp_gpio_ignore_irq(struct dp_hpd *dp_hpd, bool flags)
+{
+	struct dp_gpio_hpd_private *gpio_hpd;
+
+	if (!dp_hpd)
+		return;
+	gpio_hpd = container_of(dp_hpd, struct dp_gpio_hpd_private, base);
+
+	gpio_hpd->ignore_hpd_irq = flags;
 }
