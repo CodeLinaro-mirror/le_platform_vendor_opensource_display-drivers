@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -29,6 +29,7 @@
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_power_handle.h"
+#include "sde_roi_misr.h"
 
 /*
  * Two to anticipate panels that can do cmd/vid dynamic switching
@@ -40,7 +41,7 @@
 #define MAX_PHYS_ENCODERS_PER_VIRTUAL \
 	(MAX_H_TILES_PER_DISPLAY * NUM_PHYS_ENCODER_TYPES)
 
-#define MAX_CHANNELS_PER_ENC 4
+#define MAX_CHANNELS_PER_ENC 6
 
 #define SDE_ENCODER_FRAME_EVENT_DONE			BIT(0)
 #define SDE_ENCODER_FRAME_EVENT_ERROR			BIT(1)
@@ -155,6 +156,7 @@ enum sde_enc_rc_states {
  * @crtc_vblank_cb:	Callback into the upper layer / CRTC for
  *			notification of the VBLANK
  * @crtc_vblank_cb_data:	Data from upper layer for VBLANK notification
+ * @misr_data:		Misr data from the upper layer
  * @crtc_kickoff_cb:		Callback into CRTC that will flush & start
  *				all CTL paths
  * @crtc_kickoff_cb_data:	Opaque user data given to crtc_kickoff_cb
@@ -170,6 +172,7 @@ enum sde_enc_rc_states {
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
+ * @misr_mismatch:		boolean to indicate misr callback from mismatch IRQ
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
  *				currently. This can be controlled by user-mode
@@ -236,6 +239,8 @@ struct sde_encoder_virt {
 	void (*crtc_vblank_cb)(void *data, ktime_t ts);
 	void *crtc_vblank_cb_data;
 
+	struct sde_misr_enc_data misr_data;
+
 	struct dentry *debugfs_root;
 	struct mutex enc_lock;
 	atomic_t frame_done_cnt[MAX_PHYS_ENCODERS_PER_VIRTUAL];
@@ -247,6 +252,7 @@ struct sde_encoder_virt {
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
 	bool misr_reconfigure;
+	bool misr_mismatch;
 	u32 misr_frame_count;
 
 	bool idle_pc_enabled;
@@ -317,6 +323,16 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *encoder,
  */
 void sde_encoder_register_frame_event_callback(struct drm_encoder *encoder,
 		void (*cb)(void *, u32, ktime_t), struct drm_crtc *crtc);
+
+/**
+ * sde_encoder_register_roi_misr_callback - provide callback to encoder that
+ *	will be called on the roi misr interrupt be triggered.
+ * @encoder: encoder pointer
+ * @roi_misr_cb: callback pointer, provide NULL to deregister and disable IRQs
+ * @roi_misr_data: user data provided to callback
+ */
+void sde_encoder_register_roi_misr_callback(struct drm_encoder *drm_enc,
+		void (*roi_misr_cb)(void *), void *roi_misr_data);
 
 /**
  * sde_encoder_get_rsc_client - gets the rsc client state for primary
