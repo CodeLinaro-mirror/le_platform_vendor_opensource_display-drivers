@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -693,6 +693,7 @@ static int sde_encoder_phys_wb_atomic_check(
 	struct sde_rect wb_roi;
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	int rc;
+	bool clone_mode_curr = false;
 
 	SDE_DEBUG("[atomic_check:%d, \"%s\",%d,%d]\n",
 			hw_wb->idx - WB_0, mode->name,
@@ -708,7 +709,14 @@ static int sde_encoder_phys_wb_atomic_check(
 		return -EINVAL;
 	}
 
+	clone_mode_curr = phys_enc->in_clone_mode;
+
 	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
+
+	if (clone_mode_curr && !phys_enc->in_clone_mode) {
+		SDE_ERROR("WB commit before CWB disable\n");
+		return -EINVAL;
+	}
 
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
 
