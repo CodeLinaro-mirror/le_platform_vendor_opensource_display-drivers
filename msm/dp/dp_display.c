@@ -3572,6 +3572,15 @@ static int dp_pm_prepare(struct device *dev)
 			dp_display_send_force_connect_event(dp);
 	}
 
+	if (dp->parser->force_connect_mode) {
+		mutex_lock(&dp->session_lock);
+		u32 sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			pr_info("Suspend to sim mode when HPD is high\n");
+		}
+		mutex_unlock(&dp->session_lock);
+	}
 	return 0;
 }
 
@@ -3602,6 +3611,29 @@ static void dp_pm_complete(struct device *dev)
 	if (dp->is_connected && !dp->power_on) {
 		dp->aux->abort(dp->aux, true);
 		dp->ctrl->abort(dp->ctrl, true);
+	}
+
+	if (dp->parser->force_connect_mode) {
+		mutex_lock(&dp->session_lock);
+		u32 sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			/*
+			 * We suspend at sim mode, and resume with HPD high,
+			 * restart the session with normal mode.
+			 */
+			pr_info("HPD is high, leaving sim mode from 0x%X\n", sim_mode);
+			// Clear sim mode
+			dp_sim_set_sim_mode(dp->aux_bridge, 0);
+			mutex_unlock(&dp->session_lock);
+
+			// Trigger a disconnect->connect transition
+			dp_display_disconnect_sync(dp);
+			mutex_lock(&dp->session_lock);
+			dp_display_host_init(dp);
+			queue_work(dp->wq, &dp->connect_work);
+		}
+		mutex_unlock(&dp->session_lock);
 	}
 }
 
