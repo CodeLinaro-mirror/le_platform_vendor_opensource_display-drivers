@@ -4324,6 +4324,23 @@ int sde_encoder_get_ctlstart_timeout_state(struct drm_encoder *drm_enc)
 
 	return count;
 }
+
+void sde_encoder_get_border_color(struct drm_encoder *drm_enc,
+		bool *en, struct sde_drm_color *color)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	if (!drm_enc || !en || !color)
+		return;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	*en = sde_enc->border_color_en;
+
+	if (*en)
+		memcpy(color, &sde_enc->border_color,
+			sizeof(sde_enc->border_color));
+}
+
 /**
  * _sde_encoder_trigger_flush - trigger flush for a physical encoder
  * drm_enc: Pointer to drm encoder structure
