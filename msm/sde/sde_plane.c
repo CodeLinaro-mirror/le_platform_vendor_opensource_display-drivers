@@ -1,6 +1,7 @@
 /*
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -5541,3 +5542,18 @@ clean_plane:
 exit:
 	return ERR_PTR(ret);
 }
+
+void sde_plane_dump(struct drm_plane *plane)
+{
+	struct sde_plane *psde;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return;
+	}
+
+	psde = to_sde_plane(plane);
+	if (psde->pipe_hw && psde->pipe_hw->ops.dump)
+		psde->pipe_hw->ops.dump(psde->pipe_hw, is_sde_plane_virtual(plane));
+}
+

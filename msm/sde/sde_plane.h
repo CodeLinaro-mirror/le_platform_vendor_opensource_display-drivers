@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -401,5 +402,11 @@ void sde_plane_clear_ubwc_error(struct drm_plane *plane);
  */
 void sde_plane_setup_src_split_order(struct drm_plane *plane,
 		enum sde_sspp_multirect_index rect_mode, bool enable);
+
+/*
+ * sde_plane_dump - dump the pipe register
+ * @plane: Pointer to DRM plane object
+ */
+void sde_plane_dump(struct drm_plane *plane);
 
 #endif /* _SDE_PLANE_H_ */
