@@ -1447,7 +1447,15 @@ cp_irq:
 	if (dp_display_is_hdcp_enabled(dp) && dp->hdcp.ops->cp_irq)
 		dp->hdcp.ops->cp_irq(dp->hdcp.data);
 mst_attention:
-	dp_display_mst_attention(dp);
+	/**
+	 * For light weight DP MST, AUX simulator will generates dummy HPD_IRQ
+	 * to simulate the MST sideband messages, need to ignore the HDP_IRQ
+	 * from the sink device.
+	 */
+	if (!dp_sim_is_skip_mst(dp->aux_bridge))
+		dp_display_mst_attention(dp);
+	else
+		pr_debug("ignored mst hpd_irq\n");
 }
 
 static int dp_display_usbpd_attention_cb(struct device *dev)
