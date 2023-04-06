@@ -1174,6 +1174,8 @@ dp_mst_find_sibling_connector(struct drm_connector *connector)
 		status = mst->mst_fw_cbs->detect_port(p,
 				&mst->mst_mgr,
 				c_conn->mst_port);
+		if (dp_display->force_connect_mode)
+			status = connector_status_connected;
 		if (status != connector_status_connected)
 			continue;
 
@@ -1374,6 +1376,8 @@ dp_mst_connector_detect(struct drm_connector *connector, bool force,
 	status = mst->mst_fw_cbs->detect_port(connector,
 			&mst->mst_mgr,
 			c_conn->mst_port);
+	if (dp_display->force_connect_mode)
+		status = connector_status_connected;
 
 	/*
 	 * hide tiled connectors so only primary connector
@@ -2321,8 +2325,17 @@ dp_mst_find_fixed_connector(struct dp_mst_private *dp_mst,
 
 			drm_modeset_lock_all(connector->dev);
 
-			if (WARN_ON(c_conn->mst_port))
-				drm_dp_mst_put_port_malloc(c_conn->mst_port);
+			/**
+			 * It is expected port is not destroyed for force connect mode,
+			 * suppress the warning, and destroy the old port here.
+			 */
+			if (dp_display->force_connect_mode) {
+				if (c_conn->mst_port)
+					drm_dp_mst_put_port_malloc(c_conn->mst_port);
+			} else {
+				if (WARN_ON(c_conn->mst_port))
+					drm_dp_mst_put_port_malloc(c_conn->mst_port);
+			}
 
 			drm_dp_mst_get_port_malloc(port);
 			c_conn->mst_port = port;
@@ -2483,6 +2496,11 @@ static void dp_mst_destroy_fixed_connector(struct drm_dp_mst_topology_mgr *mgr,
 	DP_MST_DEBUG("enter\n");
 
 	dp_mst = container_of(mgr, struct dp_mst_private, mst_mgr);
+
+	if (dp_mst->dp_display->force_connect_mode) {
+		DP_MST_DEBUG("skipped for force connect mode\n");
+		return;
+	}
 
 	/* skip connector destroy for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
