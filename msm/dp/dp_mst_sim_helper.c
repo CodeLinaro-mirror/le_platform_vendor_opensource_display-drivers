@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -952,6 +953,12 @@ int msm_dp_mst_sim_transfer(void *mst_sim_context, struct drm_dp_aux_msg *msg)
 
 		if (msg->address == DP_MSTM_CTRL)
 			msm_dp_mst_sim_reset(mst_sim_context, msg);
+
+		if (msg->address >= DP_GUID &&
+			msg->address < DP_GUID + 16) {
+			memcpy(ctx->guid, msg->buffer, msg->size);
+			return 0;
+		}
 	} else if (msg->request == DP_AUX_NATIVE_READ) {
 		if (msg->address >= DP_SIDEBAND_MSG_DOWN_REP_BASE &&
 		    msg->address < DP_SIDEBAND_MSG_DOWN_REP_BASE + 256)
@@ -964,6 +971,12 @@ int msm_dp_mst_sim_transfer(void *mst_sim_context, struct drm_dp_aux_msg *msg)
 		if (msg->address >= DP_SINK_COUNT_ESI &&
 		    msg->address < DP_SINK_COUNT_ESI + 14)
 			return msm_dp_mst_sim_read_esi(mst_sim_context, msg);
+
+		if (msg->address >= DP_GUID &&
+		    msg->address < DP_GUID + 16) {
+			memcpy(msg->buffer, ctx->guid, msg->size);
+			return 0;
+		}
 	}
 
 	return -EINVAL;
