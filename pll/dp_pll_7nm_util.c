@@ -200,7 +200,8 @@ int dp_mux_get_parent_7nm(void *context, unsigned int reg, unsigned int *val)
 	return 0;
 }
 
-static bool dp_7nm_pll_lock_status(struct mdss_pll_resources *dp_res)
+static bool dp_7nm_pll_lock_status(struct mdss_pll_resources *dp_res,
+		bool check_only)
 {
 	u32 status;
 	bool pll_locked;
@@ -211,7 +212,10 @@ static bool dp_7nm_pll_lock_status(struct mdss_pll_resources *dp_res)
 			((status & BIT(0)) > 0),
 			DP_PHY_PLL_POLL_SLEEP_US,
 			DP_PHY_PLL_POLL_TIMEOUT_US)) {
-		pr_err("C_READY status is not high. Status=%x\n", status);
+		if (check_only)
+			pr_debug("C_READY status is not high. Status=%x\n", status);
+		else
+			pr_err("C_READY status is not high. Status=%x\n", status);
 		pll_locked = false;
 	} else {
 		pr_debug("C_READY status is high. Status=%x\n", status);
@@ -514,7 +518,7 @@ static int dp_config_vco_rate_7nm_bond_slave(struct mdss_pll_resources *dp_res,
 	/* Make sure the PHY register writes are done */
 	wmb();
 
-	if (!dp_7nm_pll_lock_status(dp_res)) {
+	if (!dp_7nm_pll_lock_status(dp_res, false)) {
 		res = -EINVAL;
 		goto lock_err;
 	}
@@ -585,7 +589,7 @@ static int dp_pll_enable_7nm_mission_mode(struct clk_hw *hw)
 	MDSS_PLL_REG_W(dp_res->pll_base, QSERDES_COM_RESETSM_CNTRL, 0x20);
 	wmb();	/* Make sure the PLL register writes are done */
 
-	if (!dp_7nm_pll_lock_status(dp_res)) {
+	if (!dp_7nm_pll_lock_status(dp_res, false)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
@@ -1014,7 +1018,7 @@ unsigned long dp_vco_recalc_rate_7nm(struct clk_hw *hw,
 	}
 
 	dp_res->handoff_resources = false;
-	if (dp_7nm_pll_lock_status(dp_res) && !dp_res->skip_handoff) {
+	if (dp_7nm_pll_lock_status(dp_res, true) && !dp_res->skip_handoff) {
 		pr_debug("PLL is enabled\n");
 		dp_res->handoff_resources = true;
 	} else {
