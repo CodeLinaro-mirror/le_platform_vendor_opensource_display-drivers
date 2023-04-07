@@ -603,6 +603,7 @@ static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 		struct drm_crtc_state *crtc_state)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	const struct sde_wb_cfg *wb_cfg = wb_enc->hw_wb->caps;
 	u32 encoder_mask = 0;
 
@@ -611,9 +612,11 @@ static void _sde_enc_phys_wb_detect_cwb(struct sde_encoder_phys *phys_enc,
 		encoder_mask = crtc_state->encoder_mask;
 		encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
 	}
-	phys_enc->in_clone_mode = encoder_mask ? true : false;
 
-	SDE_DEBUG("detect CWB - status:%d\n", phys_enc->in_clone_mode);
+	cstate->cwb_enc_mask = encoder_mask ? drm_encoder_mask(phys_enc->parent) : 0;
+
+	SDE_DEBUG("detect CWB - status:%d, phys state:%d in_clone_mode:%d\n",
+		 cstate->cwb_enc_mask, phys_enc->enable_state, phys_enc->in_clone_mode);
 }
 
 static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
@@ -629,11 +632,6 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	int ds_in_use = false;
 	int i = 0;
 	int ret = 0;
-
-	if (!phys_enc->in_clone_mode) {
-		SDE_DEBUG("not in CWB mode. early return\n");
-		goto exit;
-	}
 
 	ret = sde_wb_connector_state_get_output_roi(conn_state, &wb_roi);
 	if (ret) {
@@ -686,6 +684,7 @@ static int sde_encoder_phys_wb_atomic_check(
 		struct drm_connector_state *conn_state)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	struct sde_hw_wb *hw_wb = wb_enc->hw_wb;
 	const struct sde_wb_cfg *wb_cfg = hw_wb->caps;
 	struct drm_framebuffer *fb;
@@ -713,7 +712,7 @@ static int sde_encoder_phys_wb_atomic_check(
 
 	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
 
-	if (clone_mode_curr && !phys_enc->in_clone_mode) {
+	if (clone_mode_curr && !cstate->cwb_enc_mask) {
 		SDE_ERROR("WB commit before CWB disable\n");
 		return -EINVAL;
 	}
@@ -764,6 +763,16 @@ static int sde_encoder_phys_wb_atomic_check(
 	if (SDE_FORMAT_IS_YUV(fmt) != !!phys_enc->hw_cdm)
 		crtc_state->mode_changed = true;
 
+	/* if in clone mode, return after cwb validation */
+	if (cstate->cwb_enc_mask) {
+		rc = _sde_enc_phys_wb_validate_cwb(phys_enc, crtc_state,
+				conn_state);
+		if (rc)
+			SDE_ERROR("failed in cwb validation %d\n", rc);
+
+		return rc;
+	}
+
 	if (wb_roi.w && wb_roi.h) {
 		if (wb_roi.w != mode->hdisplay) {
 			SDE_ERROR("invalid roi w=%d, mode w=%d\n", wb_roi.w,
@@ -804,12 +813,6 @@ static int sde_encoder_phys_wb_atomic_check(
 					fb->width, wb_cfg->sblk->maxlinewidth);
 			return -EINVAL;
 		}
-	}
-
-	rc = _sde_enc_phys_wb_validate_cwb(phys_enc, crtc_state, conn_state);
-	if (rc) {
-		SDE_ERROR("failed in cwb validation %d\n", rc);
-		return rc;
 	}
 
 	return rc;
