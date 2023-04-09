@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -372,5 +372,14 @@ int sde_encoder_in_cont_splash(struct drm_encoder *enc);
  * @Return:     non zero value if ctl start timeout occurred
  */
 int sde_encoder_get_ctlstart_timeout_state(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_get_border_color - get border color info
+ * @drm_enc:    Pointer to drm encoder structure
+ * @en：    true if border color is configed for this encorder
+ * @color:    border color info
+ */
+void sde_encoder_get_border_color(struct drm_encoder *drm_enc,
+		bool *en, struct sde_drm_color *color);
 
 #endif /* __SDE_ENCODER_H__ */

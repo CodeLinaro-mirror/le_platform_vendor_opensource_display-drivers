@@ -1195,6 +1195,9 @@ static int shd_drm_obj_init(struct shd_display *display)
 		goto end;
 	}
 
+	sde_encoder_get_border_color(display->base->encoder,
+			&info.border_color_en, &info.border_color);
+
 	encoder = sde_encoder_init_with_ops(dev, &info, &enc_ops);
 	if (IS_ERR_OR_NULL(encoder)) {
 		SDE_ERROR("shd encoder init failed\n");
