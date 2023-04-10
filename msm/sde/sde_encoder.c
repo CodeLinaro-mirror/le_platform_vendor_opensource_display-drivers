@@ -988,6 +988,31 @@ bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc)
 			== SDE_RM_TOPOLOGY_PPSPLIT);
 }
 
+bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
+	struct drm_crtc *crtc)
+{
+	struct sde_encoder_virt *sde_enc;
+	int i;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
+		return false;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+
+		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+		if (sde_encoder_phys_is_cwb_disabling(phys, crtc))
+			return true;
+	}
+
+	return false;
+}
+
 void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
 	 struct drm_crtc_state *crtc_state)
 {
