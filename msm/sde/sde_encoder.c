@@ -4288,6 +4288,15 @@ static void sde_encoder_frame_done_callback(
 	sde_enc->crtc_frame_event_cb_data.connector =
 				sde_enc->cur_master->connector;
 
+	/* every cwb frame done should trigger one crtc frame callback event */
+	if (event & SDE_ENCODER_FRAME_EVENT_CWB_DONE) {
+		if (sde_enc->crtc_frame_event_cb)
+				sde_enc->crtc_frame_event_cb(
+					&sde_enc->crtc_frame_event_cb_data,
+					event);
+		return;
+	}
+
 	if (event & (SDE_ENCODER_FRAME_EVENT_DONE
 			| SDE_ENCODER_FRAME_EVENT_ERROR
 			| SDE_ENCODER_FRAME_EVENT_PANEL_DEAD)) {
