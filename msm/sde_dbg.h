@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef SDE_DBG_H_
@@ -391,7 +392,7 @@ static inline bool sde_evtlog_is_enabled(struct sde_dbg_evtlog *evtlog,
 
 static inline ssize_t sde_evtlog_dump_to_buffer(struct sde_dbg_evtlog *evtlog,
 		char *evtlog_buf, ssize_t evtlog_buf_size,
-		bool update_last_entry)
+		bool update_last_entry, bool full_dump)
 {
 	return 0;
 }
