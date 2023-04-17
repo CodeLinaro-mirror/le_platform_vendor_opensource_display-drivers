@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_HW_CATALOG_H
@@ -242,6 +243,7 @@ enum {
  * @SDE_DIM_LAYER             Layer mixer supports dim layer
  * @SDE_DISP_CWB_PREF         Layer mixer preferred for CWB
  * @SDE_DISP_PRIMARY_PREF     Layer mixer preferred for primary display
+ * @SDE_DISP_SECONDARY_PREF   Layer mixer preferred for secondary display
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -250,6 +252,7 @@ enum {
 	SDE_MIXER_GC,
 	SDE_DIM_LAYER,
 	SDE_DISP_PRIMARY_PREF,
+	SDE_DISP_SECONDARY_PREF,
 	SDE_DISP_CWB_PREF,
 	SDE_MIXER_MAX
 };

@@ -713,6 +713,12 @@ static int shd_connector_get_info(struct drm_connector *connector,
 	info->num_of_h_tiles = 1;
 	info->h_tile_instance[0] = display->base->intf_idx;
 
+	if (display->display_type)
+		if (!strcmp(display->display_type, "primary"))
+			info->display_type = SDE_CONNECTOR_PRIMARY;
+		else if (!strcmp(display->display_type, "secondary"))
+			info->display_type = SDE_CONNECTOR_SECONDARY;
+
 	return 0;
 }
 

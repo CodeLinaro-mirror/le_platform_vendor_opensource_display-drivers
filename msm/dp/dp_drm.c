@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-dp]: %s: " fmt, __func__
@@ -1033,7 +1033,9 @@ int dp_connector_get_info(struct drm_connector *connector,
 
 	if (display_type)
 		if (!strcmp(display_type, "primary"))
-			info->is_primary = true;
+			info->display_type = SDE_CONNECTOR_PRIMARY;
+		else if (!strcmp(display_type, "secondary"))
+			info->display_type = SDE_CONNECTOR_SECONDARY;
 
 	info->is_connected = display->is_sst_connected;
 	info->capabilities = MSM_DISPLAY_CAP_VID_MODE | MSM_DISPLAY_CAP_EDID |
