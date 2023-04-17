@@ -99,6 +99,7 @@ static int dp_parser_aux(struct dp_parser *parser)
 	int len = 0, i = 0, j = 0, config_count = 0;
 	const char *data;
 	int const minimum_config_count = 1;
+	int rc = 0;
 
 	for (i = 0; i < PHY_AUX_CFG_MAX; i++) {
 		const char *property = dp_get_phy_aux_config_property(i);
@@ -131,7 +132,24 @@ static int dp_parser_aux(struct dp_parser *parser)
 					parser->aux_cfg[i].lut[j - 1]);
 		}
 	}
-		return 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,dp-aux-timeout-us", &parser->aux_timeout);
+	if (rc)
+		parser->aux_timeout = 500;	// DP 1.4 spec = 400us
+	// Convert to 19.2MHz AUX clk ticks, cap to 20bits
+	parser->aux_timeout = parser->aux_timeout * 192 / 10;
+	if (parser->aux_timeout > 0xfffff)
+		parser->aux_timeout = 0xfffff;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,dp-aux-retry", &parser->aux_retry_count);
+	if (rc)
+		parser->aux_retry_count = 15;
+	if (parser->aux_retry_count >= 15)
+		parser->aux_retry_count = 15;
+
+	return 0;
 
 error:
 	dp_parser_phy_aux_cfg_reset(parser);
@@ -213,6 +231,16 @@ static int dp_parser_misc(struct dp_parser *parser)
 			"qcom,lane-training-retries", &parser->link_training_retries);
 	if (rc)
 		parser->link_training_retries = MAX_DP_LINK_TRAINING_RETRIES;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-v-level", &parser->link_training_min_vlevel);
+	if (rc)
+		parser->link_training_min_vlevel = 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-p-level", &parser->link_training_min_plevel);
+	if (rc)
+		parser->link_training_min_plevel = 0;
 
 	return 0;
 }

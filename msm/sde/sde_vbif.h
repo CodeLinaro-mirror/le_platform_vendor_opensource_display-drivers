@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_VBIF_H__
@@ -120,6 +121,12 @@ int sde_vbif_halt_plane_xin(struct sde_kms *sde_kms, u32 xin_id,
  * halt:	boolen to indicate halt/unhalt
  */
 int sde_vbif_halt_xin_mask(struct sde_kms *sde_kms, u32 xin_id_mask, bool halt);
+
+/**
+ * sde_vbif_dump_errors - dump vbif errors registers
+ * @sde_kms:	SDE handler
+ */
+void sde_vbif_dump_error(struct sde_kms *sde_kms);
 
 #ifdef CONFIG_DEBUG_FS
 int sde_debugfs_vbif_init(struct sde_kms *sde_kms, struct dentry *debugfs_root);

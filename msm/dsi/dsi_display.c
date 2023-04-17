@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"msm-dsi-display:[%s] " fmt, __func__
@@ -589,6 +589,48 @@ static bool dsi_display_validate_reg_read(struct dsi_panel *panel)
 	return false;
 }
 
+static int dsi_display_parse_border_color_data(struct dsi_display *display)
+{
+	struct device_node *of_node = display->pdev->dev.of_node;
+	int rc = 0;
+	int i, count = 0;
+	u32 color[4] = {0};
+
+	count = of_property_count_u32_elems(of_node, "qcom,border-color");
+
+	if (count > 0) {
+		if (count != 4) {
+			pr_warn("Border color num doesn't match\n");
+			return 0;
+		}
+
+		for (i = 0; i < count; i++) {
+			rc = of_property_read_u32_index(of_node,
+					"qcom,border-color", i, &color[i]);
+		}
+
+		display->border_color = (struct sde_drm_color) {
+					color[0],
+					color[1],
+					color[2],
+					color[3],
+		};
+
+		display->border_color_en = true;
+	} else {
+		pr_debug("Border color not enabled\n");
+		return 0;
+	}
+
+	SDE_DEBUG(" display->border_color :{%d,%d,%d,%d}\n",
+			display->border_color.color_0,
+			display->border_color.color_1,
+			display->border_color.color_2,
+			display->border_color.color_3);
+
+	return rc;
+}
+
 static void dsi_display_parse_te_data(struct dsi_display *display)
 {
 	struct platform_device *pdev;
@@ -618,7 +660,10 @@ static void dsi_display_parse_te_data(struct dsi_display *display)
 		rc = of_property_read_u32(dev->of_node,
 			"qcom,panel-te-source", &val);
 
-	if (rc || (val  > MAX_TE_SOURCE_ID)) {
+	if (rc) {
+		pr_debug("no vsync source selection\n");
+		val = 0;
+	} else if (val  > MAX_TE_SOURCE_ID) {
 		pr_err("invalid vsync source selection\n");
 		val = 0;
 	}
@@ -3698,6 +3743,11 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 			break;
 	}
 
+	/* Parse bordercolor data */
+	rc = dsi_display_parse_border_color_data(display);
+	if (rc)
+		goto error;
+
 	pr_debug("success\n");
 error:
 	return rc;
@@ -6094,6 +6144,11 @@ int dsi_display_get_info(struct drm_connector *connector,
 	host = &display->panel->host_config;
 	if (host->split_link.split_link_enabled)
 		info->capabilities |= MSM_DISPLAY_SPLIT_LINK;
+
+	info->border_color_en = display->border_color_en;
+	if (info->border_color_en)
+		memcpy(&info->border_color, &display->border_color,
+				sizeof(display->border_color));
 
 error:
 	mutex_unlock(&display->display_lock);

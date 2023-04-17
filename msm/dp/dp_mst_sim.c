@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,6 +23,7 @@
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_displayid.h>
 #include "dp_mst_sim.h"
+#include "msm_drv.h"
 
 struct dp_sim_dpcd_reg {
 	struct list_head head;
@@ -61,6 +62,7 @@ struct dp_sim_device {
 	u32 port_num;
 	u32 current_port_num;
 	u32 sim_mode;
+	u32 aux_timeout_count;
 
 	u32 edid_seg;
 	u32 edid_seg_int;
@@ -72,6 +74,7 @@ struct dp_sim_device {
 	bool skip_config;
 	bool skip_hpd;
 	bool skip_mst;
+	u32 aux_timeout_limit;
 };
 
 struct dp_sim_debug_edid_entry {
@@ -326,19 +329,31 @@ static ssize_t dp_sim_transfer(struct msm_dp_aux_bridge *bridge,
 
 	if (((sim_dev->sim_mode & DP_SIM_MODE_EDID) ||
 			sim_dev->skip_edid) &&
-			(msg->request & DP_AUX_I2C_MOT))
+			(msg->request & DP_AUX_I2C_MOT)) {
 		ret = dp_sim_read_edid(sim_dev, msg);
-	else if (((sim_dev->sim_mode & DP_SIM_MODE_DPCD_READ) ||
+	} else if (((sim_dev->sim_mode & DP_SIM_MODE_DPCD_READ) ||
 			sim_dev->skip_dpcd) &&
-			msg->request == DP_AUX_NATIVE_READ)
+			msg->request == DP_AUX_NATIVE_READ) {
 		ret = dp_sim_read_dpcd_regs(sim_dev, msg->buffer,
 				msg->size, msg->address);
-	else if (((sim_dev->sim_mode & DP_SIM_MODE_DPCD_WRITE) ||
+	} else if (((sim_dev->sim_mode & DP_SIM_MODE_DPCD_WRITE) ||
 			sim_dev->skip_config) &&
-			msg->request == DP_AUX_NATIVE_WRITE)
+			msg->request == DP_AUX_NATIVE_WRITE) {
 		ret = msg->size;
-	else
+	} else {
 		ret = drm_aux->transfer(drm_aux, msg);
+
+		if (sim_dev->aux_timeout_limit && ret == -ETIMEDOUT) {
+			sim_dev->aux_timeout_count++;
+			if (sim_dev->aux_timeout_count >= sim_dev->aux_timeout_limit) {
+				pr_warn("Consecutive AUX timeout, fallback to sim mode\n");
+				sim_dev->sim_mode |=
+					DP_SIM_MODE_DPCD_READ | DP_SIM_MODE_DPCD_WRITE;
+			}
+		} else {
+			sim_dev->aux_timeout_count = 0;
+		}
+	}
 
 end:
 	dp_sim_aux_hex_dump(msg);
@@ -354,6 +369,18 @@ static void dp_sim_host_hpd_irq(void *host_dev)
 
 	if (sim_dev->hpd_cb)
 		sim_dev->hpd_cb(sim_dev->host_dev, false, true);
+}
+
+u32 dp_sim_get_sim_mode(struct msm_dp_aux_bridge *bridge)
+{
+	struct dp_sim_device *sim_dev;
+
+	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
+		return -EINVAL;
+
+	sim_dev = to_dp_sim_dev(bridge);
+
+	return sim_dev->sim_mode;
 }
 
 int dp_sim_set_sim_mode(struct msm_dp_aux_bridge *bridge, u32 sim_mode)
@@ -439,6 +466,9 @@ int dp_sim_update_port_edid(struct msm_dp_aux_bridge *bridge,
 	struct dp_sim_device *sim_dev;
 	struct msm_dp_mst_sim_port *sim_port;
 
+	if (!size)
+		return -EINVAL;
+
 	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
 		return -EINVAL;
 
@@ -495,6 +525,18 @@ int dp_sim_read_dpcd_reg(struct msm_dp_aux_bridge *bridge,
 	sim_dev = to_dp_sim_dev(bridge);
 
 	return dp_sim_read_dpcd_regs(sim_dev, dpcd, size, offset);
+}
+
+bool dp_sim_is_skip_mst(struct msm_dp_aux_bridge *bridge)
+{
+	struct dp_sim_device *sim_dev;
+
+	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
+		return false;
+
+	sim_dev = to_dp_sim_dev(bridge);
+
+	return (sim_dev->sim_mode & DP_SIM_MODE_MST) || sim_dev->skip_mst;
 }
 
 static void dp_sim_update_dtd(struct edid *edid,
@@ -1025,6 +1067,7 @@ static int dp_sim_parse_dpcd(struct dp_sim_device *sim_dev)
 static int dp_sim_parse_misc(struct dp_sim_device *sim_dev)
 {
 	struct device_node *node = sim_dev->bridge.of_node;
+	int rc;
 
 	sim_dev->skip_edid = of_property_read_bool(node,
 			"qcom,skip-edid");
@@ -1044,13 +1087,19 @@ static int dp_sim_parse_misc(struct dp_sim_device *sim_dev)
 	sim_dev->skip_mst = of_property_read_bool(node,
 			"qcom,skip-mst");
 
-	pr_debug("skip: edid=%d dpcd=%d LT=%d config=%d hpd=%d mst=%d\n",
+	rc = of_property_read_u32(node,
+			"qcom,aux-timeout-limit", &sim_dev->aux_timeout_limit);
+	if (rc)
+		sim_dev->aux_timeout_limit = 0;
+
+	pr_debug("skip: edid=%d dpcd=%d LT=%d config=%d hpd=%d mst=%d tout=%d\n",
 			sim_dev->skip_edid,
 			sim_dev->skip_dpcd,
 			sim_dev->skip_link_training,
 			sim_dev->skip_config,
 			sim_dev->skip_hpd,
-			sim_dev->skip_mst);
+			sim_dev->skip_mst,
+			sim_dev->aux_timeout_limit);
 
 	return 0;
 }

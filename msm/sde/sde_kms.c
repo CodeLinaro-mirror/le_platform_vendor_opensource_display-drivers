@@ -1,7 +1,9 @@
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -1174,6 +1176,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	int ret;
+	bool cwb_disabling;
 
 	if (!kms || !crtc || !crtc->state) {
 		SDE_ERROR("invalid params\n");
@@ -1199,8 +1202,14 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 
 	SDE_ATRACE_BEGIN("sde_kms_wait_for_commit_done");
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-		if (encoder->crtc != crtc)
-			continue;
+		cwb_disabling = false;
+		if (encoder->crtc != crtc) {
+			cwb_disabling = sde_encoder_is_cwb_disabling(encoder,
+					crtc);
+			if (!cwb_disabling)
+				continue;
+		}
+
 		/*
 		 * Wait for post-flush if necessary to delay before
 		 * plane_cleanup. For example, wait for vsync in case of video
@@ -1214,6 +1223,9 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		}
 
 		sde_crtc_complete_flip(crtc, NULL);
+
+		if (cwb_disabling)
+			sde_encoder_virt_reset(encoder);
 	}
 
 	SDE_ATRACE_END("sde_ksm_wait_for_commit_done");
@@ -1546,6 +1558,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		int idx;
 		int dp_stream_count;
 		u32 dp_intf_idx[DP_STREAM_MAX];
+		struct dp_display_info dp_info = {0};
 
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -1556,6 +1569,17 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("dp get_info %d failed\n", i);
 			continue;
 		}
+
+		rc = dp_display_get_info(display, &dp_info);
+		if (rc) {
+			SDE_ERROR("failed to read dp info, %d\n", rc);
+			continue;
+		}
+
+		info.border_color_en = dp_info.border_color_en;
+		if (info.border_color_en)
+			memcpy(&info.border_color, &dp_info.border_color,
+					sizeof(dp_info.border_color));
 
 		encoder = sde_encoder_init(dev, &info);
 		if (IS_ERR_OR_NULL(encoder)) {

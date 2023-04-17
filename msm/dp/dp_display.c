@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
@@ -139,6 +139,9 @@ struct dp_display_private {
 	struct device *msm_hdcp_dev;
 
 	struct sde_power_client *cont_splash_client;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -501,7 +504,7 @@ static void dp_display_deinitialize_hdcp(struct dp_display_private *dp)
 
 static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 {
-	struct sde_hdcp_init_data hdcp_init_data;
+	struct sde_hdcp_init_data hdcp_init_data = {};
 	struct dp_parser *parser;
 	void *fd;
 	int rc = 0;
@@ -583,6 +586,129 @@ static int dp_display_get_cell_info(struct dp_display_private *dp)
 	return 0;
 }
 
+static int dp_display_get_border_color_info(struct dp_display_private *dp)
+{
+	struct device_node *of_node = dp->pdev->dev.of_node;
+	int rc = 0;
+	int i, count = 0;
+	u32 color[4] = {0};
+
+	count = of_property_count_u32_elems(of_node, "qcom,border-color");
+
+	if (count > 0) {
+		if (count != 4) {
+			pr_warn("Border color num doesn't match\n");
+			return 0;
+		}
+
+		for (i = 0; i < count; i++) {
+			rc = of_property_read_u32_index(of_node,
+					"qcom,border-color", i, &color[i]);
+		}
+
+		dp->border_color = (struct sde_drm_color) {
+					color[0],
+					color[1],
+					color[2],
+					color[3],
+		};
+
+		dp->border_color_en = true;
+	} else {
+		pr_debug("Border color not enabled\n");
+		return 0;
+	}
+
+	SDE_DEBUG(" dp->border_color :{%d,%d,%d,%d}\n",
+			dp->border_color.color_0,
+			dp->border_color.color_1,
+			dp->border_color.color_2,
+			dp->border_color.color_3);
+
+	return 0;
+}
+
+static ssize_t status_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct dp_display_private *dp = NULL;
+	struct drm_connector *connector;
+
+	char *p = buf;
+
+	if (!dev) {
+		pr_err("invalid device pointer\n");
+		return -ENODEV;
+	}
+
+	dp = dev_get_drvdata(dev);
+	if (!dp) {
+		pr_err("invalid driver pointer\n");
+		return -ENODEV;
+	}
+
+	connector = dp->dp_display.base_connector;
+
+	if (!connector) {
+		pr_err("DP%d connector not set\n", dp->cell_idx);
+		p += scnprintf(p, PAGE_SIZE, "connector not set");
+		goto out;
+	}
+
+	p += scnprintf(p, PAGE_SIZE + buf - p, "name=%s", connector->name);
+
+	p += scnprintf(p, PAGE_SIZE + buf - p, " status=%s",
+			dp->hpd->hpd_high ? "connected" : "disconnected");
+
+	if ((dp->aux->state & DP_STATE_TRAIN_1_SUCCEEDED) &&
+			(dp->aux->state & DP_STATE_TRAIN_2_SUCCEEDED))
+		p += scnprintf(p, PAGE_SIZE + buf - p, " link=ready");
+	else if ((dp->aux->state & DP_STATE_TRAIN_1_FAILED) ||
+			(dp->aux->state & DP_STATE_TRAIN_2_FAILED))
+		p += scnprintf(p, PAGE_SIZE + buf - p, " link=failed");
+	else if ((dp->aux->state & DP_STATE_TRAIN_1_STARTED) ||
+			(dp->aux->state & DP_STATE_TRAIN_2_STARTED))
+		p += scnprintf(p, PAGE_SIZE + buf - p, " link=training");
+	else if (dp->aux->state & DP_STATE_LINK_MAINTENANCE_STARTED)
+		p += scnprintf(p, PAGE_SIZE + buf - p, " link=maintaining");
+	else
+		p += scnprintf(p, PAGE_SIZE + buf - p, " link=not_ready");
+	p += scnprintf(p, PAGE_SIZE + buf - p, " stream=%s",
+			(dp->aux->state & DP_STATE_CTRL_POWERED_ON) ? "ON" : "OFF");
+	p += scnprintf(p, PAGE_SIZE + buf - p, " state=0x%X", dp->aux->state);
+
+out:
+	return p - buf;
+}
+
+static DEVICE_ATTR_RO(status);
+
+static struct attribute *dp_fs_attrs[] = {
+	&dev_attr_status.attr,
+	NULL
+};
+
+static struct attribute_group dp_fs_attr_group = {
+	.attrs = dp_fs_attrs
+};
+
+static int dp_display_sysfs_init(struct dp_display_private *dp)
+{
+	int ret;
+
+	ret = sysfs_create_group(&dp->pdev->dev.kobj, &dp_fs_attr_group);
+	if (ret)
+		pr_err("DP%d unable to register dp_display sysfs nodes\n", dp->cell_idx);
+
+	return 0;
+}
+
+static int dp_display_sysfs_deinit(struct dp_display_private *dp)
+{
+	sysfs_remove_group(&dp->pdev->dev.kobj, &dp_fs_attr_group);
+	return 0;
+}
+
 static int dp_display_bind(struct device *dev, struct device *master,
 		void *data)
 {
@@ -637,6 +763,7 @@ static void dp_display_unbind(struct device *dev, struct device *master,
 	if (dp->aux)
 		(void)dp->aux->drm_aux_deregister(dp->aux);
 	dp_display_deinitialize_hdcp(dp);
+	dp_display_sysfs_deinit(dp);
 }
 
 static const struct component_ops dp_display_comp_ops = {
@@ -888,6 +1015,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 					dp->debug->max_pclk_khz);
 	dp->dp_display.force_bond_mode = dp->parser->force_bond_mode ||
 					dp->debug->force_bond_mode;
+	dp->dp_display.force_connect_mode = dp->parser->force_connect_mode;
 	dp->dp_display.max_hdisplay = dp->parser->max_hdisplay;
 	dp->dp_display.max_vdisplay = dp->parser->max_vdisplay;
 
@@ -1319,7 +1447,15 @@ cp_irq:
 	if (dp_display_is_hdcp_enabled(dp) && dp->hdcp.ops->cp_irq)
 		dp->hdcp.ops->cp_irq(dp->hdcp.data);
 mst_attention:
-	dp_display_mst_attention(dp);
+	/**
+	 * For light weight DP MST, AUX simulator will generates dummy HPD_IRQ
+	 * to simulate the MST sideband messages, need to ignore the HDP_IRQ
+	 * from the sink device.
+	 */
+	if (!dp_sim_is_skip_mst(dp->aux_bridge))
+		dp_display_mst_attention(dp);
+	else
+		pr_debug("ignored mst hpd_irq\n");
 }
 
 static int dp_display_usbpd_attention_cb(struct device *dev)
@@ -1646,18 +1782,6 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		}
 	}
 
-	if (dp->parser->force_connect_mode) {
-		/*
-		 * always enter simulation first regardless of the actual
-		 * connection state to make connector always connected.
-		 * this will fix the corner case when user tries to read
-		 * connector modes when link training is still running.
-		 */
-		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		dp_display_process_hpd_high(dp, true);
-		dp_display_send_hpd_notification(dp);
-	}
-
 	return rc;
 error_hpd_reg:
 	dp_debug_put(dp->debug);
@@ -1706,9 +1830,44 @@ static int dp_display_post_init(struct dp_display *dp_display)
 	if (rc)
 		goto end;
 
+	dp_display_sysfs_init(dp);
+
 	dp_display->post_init = NULL;
 end:
 	pr_debug("DP%d %s\n", dp->cell_idx, rc ? "failed" : "success");
+	return rc;
+}
+
+static int dp_display_after_init(struct dp_display *dp_display)
+{
+	int rc = 0;
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		pr_err("invalid input\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (IS_ERR_OR_NULL(dp)) {
+		pr_err("invalid params\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (dp->parser->force_connect_mode) {
+		/*
+		 * always enter simulation first regardless of the actual
+		 * connection state to make connector always connected.
+		 * this will fix the corner case when user tries to read
+		 * connector modes when link training is still running.
+		 */
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		dp_display_process_hpd_high(dp, true);
+		dp_display_send_hpd_notification(dp);
+	}
+end:
 	return rc;
 }
 
@@ -3079,6 +3238,10 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	rc = dp_display_get_border_color_info(dp);
+	if (rc)
+		goto error;
+
 	rc = dp_parser_msm_hdcp_dev(dp);
 	if (rc)
 		goto error;
@@ -3118,6 +3281,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->get_debug     = dp_get_debug;
 	dp_display->post_open     = NULL;
 	dp_display->post_init     = dp_display_post_init;
+	dp_display->after_init    = dp_display_after_init;
 	dp_display->config_hdr    = dp_display_config_hdr;
 	dp_display->mst_install   = dp_display_mst_install;
 	dp_display->mst_uninstall = dp_display_mst_uninstall;
@@ -3272,6 +3436,11 @@ int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info)
 		dp_info->intf_idx[i] = dp->intf_idx[i];
 	dp_info->phy_idx = dp->phy_idx;
 
+	dp_info->border_color_en = dp->border_color_en;
+	if (dp_info->border_color_en)
+		memcpy(&dp_info->border_color, &dp->border_color,
+				sizeof(dp->border_color));
+
 	return 0;
 }
 
@@ -3403,6 +3572,15 @@ static int dp_pm_prepare(struct device *dev)
 			dp_display_send_force_connect_event(dp);
 	}
 
+	if (dp->parser->force_connect_mode) {
+		mutex_lock(&dp->session_lock);
+		u32 sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			pr_info("Suspend to sim mode when HPD is high\n");
+		}
+		mutex_unlock(&dp->session_lock);
+	}
 	return 0;
 }
 
@@ -3433,6 +3611,29 @@ static void dp_pm_complete(struct device *dev)
 	if (dp->is_connected && !dp->power_on) {
 		dp->aux->abort(dp->aux, true);
 		dp->ctrl->abort(dp->ctrl, true);
+	}
+
+	if (dp->parser->force_connect_mode) {
+		mutex_lock(&dp->session_lock);
+		u32 sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			/*
+			 * We suspend at sim mode, and resume with HPD high,
+			 * restart the session with normal mode.
+			 */
+			pr_info("HPD is high, leaving sim mode from 0x%X\n", sim_mode);
+			// Clear sim mode
+			dp_sim_set_sim_mode(dp->aux_bridge, 0);
+			mutex_unlock(&dp->session_lock);
+
+			// Trigger a disconnect->connect transition
+			dp_display_disconnect_sync(dp);
+			mutex_lock(&dp->session_lock);
+			dp_display_host_init(dp);
+			queue_work(dp->wq, &dp->connect_work);
+		}
+		mutex_unlock(&dp->session_lock);
 	}
 }
 

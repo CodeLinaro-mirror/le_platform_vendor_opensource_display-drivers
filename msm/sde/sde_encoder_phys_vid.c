@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -1001,7 +1002,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 static int _sde_encoder_phys_vid_wait_for_vblank(
 		struct sde_encoder_phys *phys_enc, bool notify)
 {
-	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_wait_info wait_info = {0};
 	int ret = 0;
 	u32 event = 0;
 	u32 event_helper = 0;

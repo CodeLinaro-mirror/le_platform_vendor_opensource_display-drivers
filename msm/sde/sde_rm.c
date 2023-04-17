@@ -991,6 +991,42 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		return false;
 	}
 
+	/**
+	 * CWB pingpong index and primary mixer index should have the
+	 * same parity, so add a rule to reserve cwb pingpong block with
+	 * primary mixer pingpong index in single pipe topology case.
+	 *
+	 * For dual pipe case, two pingpong blocks always be allocated.
+	 * And only LM0 & LM1 can be used as primary mixer.
+	 */
+	if (RM_RQ_CWB(reqs)) {
+		ret = true;
+
+		if (!reqs->hw_res.cwb_pp_ratio) {
+			SDE_ERROR("primary mixer is not set\n");
+			ret = false;
+		}
+
+		if (ret && (reqs->hw_res.cwb_pp_ratio > LM_1)) {
+			SDE_ERROR("primary mixer does not support cwb\n");
+			ret = false;
+		}
+
+		if (ret && (reqs->topology->top_name == SDE_RM_TOPOLOGY_SINGLEPIPE)
+			&& (((*pp)->id + reqs->hw_res.cwb_pp_ratio) % 2)) {
+			SDE_DEBUG("invalid pp %d, cwb pp ratio %d\n",
+					(*pp)->id, reqs->hw_res.cwb_pp_ratio);
+			ret = false;
+		}
+
+		if (!ret) {
+			*dspp = NULL;
+			*ds = NULL;
+			*pp = NULL;
+			return ret;
+		}
+	}
+
 	if (RESERVED_BY_OTHER(*pp, enc_id)) {
 		SDE_DEBUG("lm %d pp %d already reserved\n", lm->id,
 				(*pp)->id);
@@ -1975,7 +2011,7 @@ static int _sde_rm_populate_requirements(
 	 * Set the requirement for LM which has CWB support if CWB is
 	 * found enabled.
 	 */
-	if (!RM_RQ_CWB(reqs) && sde_encoder_in_clone_mode(enc)) {
+	if (!RM_RQ_CWB(reqs) && sde_crtc_state_in_clone_mode(enc, crtc_state)) {
 		reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_CWB);
 
 		/*

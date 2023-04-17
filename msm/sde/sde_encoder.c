@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -240,6 +241,8 @@ enum sde_enc_rc_states {
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
  *				after power collapse
  * @pm_qos_cpu_req:		pm_qos request for cpu frequency
+ * @border_color_en:		Set to true if ctrc need to set border color
+ * @border_color		Border color include 8 bit color info G, B, R, A
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -304,6 +307,10 @@ struct sde_encoder_virt {
 	bool recovery_events_enabled;
 	bool elevated_ahb_vote;
 	struct pm_qos_request pm_qos_cpu_req;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
+
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -442,13 +449,16 @@ static int _sde_encoder_wait_timeout(int32_t drm_id, int32_t hw_id,
 
 	do {
 		rc = wait_event_timeout(*(info->wq),
-			atomic_read(info->atomic_cnt) == 0, wait_time_jiffies);
+			atomic_read(info->atomic_cnt) == info->count_check,
+			wait_time_jiffies);
 		cur_ktime = ktime_get();
 
 		SDE_EVT32(drm_id, hw_id, rc, ktime_to_ms(cur_ktime),
-			timeout_ms, atomic_read(info->atomic_cnt));
+			timeout_ms, atomic_read(info->atomic_cnt),
+			info->count_check);
 	/* If we timed out, counter is valid and time is less, wait again */
-	} while (atomic_read(info->atomic_cnt) && (rc == 0) &&
+	} while ((atomic_read(info->atomic_cnt) != info->count_check) &&
+			(rc == 0) &&
 			(ktime_compare_safe(exp_ktime, cur_ktime) > 0));
 
 	return rc;
@@ -981,6 +991,61 @@ bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc)
 			== SDE_RM_TOPOLOGY_PPSPLIT);
 }
 
+bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
+	struct drm_crtc *crtc)
+{
+	struct sde_encoder_virt *sde_enc;
+	int i;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
+		return false;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+
+		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+		if (sde_encoder_phys_is_cwb_disabling(phys, crtc))
+			return true;
+	}
+
+	return false;
+}
+
+void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
+	 struct drm_crtc_state *crtc_state)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_crtc_state *sde_crtc_state;
+	int i = 0;
+
+	if (!drm_enc || !crtc_state) {
+		SDE_DEBUG("invalid params\n");
+		return;
+	}
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	sde_crtc_state = to_sde_crtc_state(crtc_state);
+
+	if ((sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL) ||
+		(!(sde_crtc_state->cwb_enc_mask & drm_encoder_mask(drm_enc))))
+		return;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+		if (phys) {
+			phys->in_clone_mode = true;
+			SDE_DEBUG("enc:%d phys state:%d\n", DRMID(drm_enc), phys->enable_state);
+		}
+	}
+
+	sde_crtc_state->cwb_enc_mask = 0;
+}
+
 static int sde_encoder_virt_atomic_check(
 		struct drm_encoder *drm_enc,
 		struct drm_crtc_state *crtc_state,
@@ -1030,8 +1095,9 @@ static int sde_encoder_virt_atomic_check(
 				ret = -EINVAL;
 
 		if (ret) {
-			SDE_ERROR_ENC(sde_enc,
-					"mode unsupported, phys idx %d\n", i);
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
 			return ret;
 		}
 	}
@@ -2078,6 +2144,40 @@ static int _sde_encoder_dsc_3_lm_3_enc_3_intf(struct sde_encoder_virt *sde_enc,
 	return 0;
 }
 
+static int _sde_encoder_dsc_shd(struct sde_encoder_virt *sde_enc,
+		struct sde_encoder_kickoff_params *params)
+{
+	struct sde_encoder_phys *enc_master = sde_enc->cur_master;
+	struct sde_hw_ctl *hw_ctl = enc_master->hw_ctl;
+	struct sde_ctl_dsc_cfg cfg;
+	int i;
+
+	memset(&cfg, 0, sizeof(cfg));
+
+	for (i = 0; i < params->num_channels; i++) {
+		if (!sde_enc->hw_dsc[i]) {
+			SDE_ERROR_ENC(sde_enc, "invalid params for DSC\n");
+			return -EINVAL;
+		}
+		cfg.dsc[i] = sde_enc->hw_dsc[i]->idx;
+		cfg.dsc_count++;
+		if (hw_ctl->ops.update_bitmask_dsc)
+			hw_ctl->ops.update_bitmask_dsc(hw_ctl, cfg.dsc[i], 1);
+	}
+
+	/* setup dsc active configuration in the control path */
+	if (hw_ctl->ops.setup_dsc_cfg) {
+		hw_ctl->ops.setup_dsc_cfg(hw_ctl, &cfg);
+		SDE_DEBUG_ENC(sde_enc,
+				"setup_dsc_cfg hw_ctl[%d], count:%d, dsc:%d,%d,%d,%d,%d,%d\n",
+				hw_ctl->idx, cfg.dsc_count,
+				cfg.dsc[0], cfg.dsc[1], cfg.dsc[2], cfg.dsc[3],
+				cfg.dsc[4], cfg.dsc[5]);
+	}
+
+	return 0;
+}
+
 static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
@@ -2162,6 +2262,8 @@ static int _sde_encoder_dsc_setup(struct sde_encoder_virt *sde_enc,
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
 			&sde_enc->prv_conn_roi))
 		return ret;
+	if (to_sde_connector(drm_conn)->shared)
+		return _sde_encoder_dsc_shd(sde_enc, params);
 
 	switch (topology) {
 	case SDE_RM_TOPOLOGY_SINGLEPIPE_DSC:
@@ -3307,6 +3409,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct sde_kms *sde_kms;
 	struct list_head *connector_list;
 	struct drm_connector *conn = NULL, *conn_iter;
+	struct sde_crtc *sde_crtc;
 	struct sde_rm_hw_iter dsc_iter, pp_iter, qdss_iter;
 	struct sde_rm_hw_iter lm_iter;
 	struct sde_rm_hw_request request_hw;
@@ -3345,6 +3448,11 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		return;
 	}
 	sde_enc->crtc = drm_enc->crtc;
+	sde_crtc = to_sde_crtc(drm_enc->crtc);
+	sde_crtc->border_color_en = sde_enc->border_color_en;
+	if (sde_crtc->border_color_en)
+		memcpy(&sde_crtc->border_color, &sde_enc->border_color,
+				sizeof(sde_enc->border_color));
 
 	list_for_each_entry(conn_iter, connector_list, head)
 		if (conn_iter->encoder == drm_enc)
@@ -3765,7 +3873,9 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sde_enc->input_handler_registered = true;
 	}
 
-	if (!(msm_is_mode_seamless_vrr(cur_mode)
+	if ((drm_enc->crtc->state->connectors_changed &&
+			sde_encoder_in_clone_mode(drm_enc)) ||
+			!(msm_is_mode_seamless_vrr(cur_mode)
 			|| msm_is_mode_seamless_dms(cur_mode)
 			|| msm_is_mode_seamless_dyn_clk(cur_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
@@ -3828,6 +3938,29 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	_sde_encoder_virt_enable_helper(drm_enc);
 }
 
+void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	int i = 0;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		if (sde_enc->phys_encs[i]) {
+			sde_enc->phys_encs[i]->cont_splash_enabled = false;
+			sde_enc->phys_encs[i]->cont_splash_single_flush = 0;
+			sde_enc->phys_encs[i]->connector = NULL;
+		}
+	}
+
+	sde_enc->cur_master = NULL;
+	/*
+	 * clear the cached crtc in sde_enc on use case finish, after all the
+	 * outstanding events and timers have been completed
+	 */
+	sde_enc->crtc = NULL;
+
+	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
+}
+
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
@@ -3862,7 +3995,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	SDE_EVT32(DRMID(drm_enc));
 
 	/* wait for idle */
-	sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+	if (!sde_encoder_in_clone_mode(drm_enc))
+		sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
 
 	if (sde_enc->input_handler && sde_enc->input_handler_registered) {
 		input_unregister_handler(sde_enc->input_handler);
@@ -3919,22 +4053,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_STOP);
 
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		if (sde_enc->phys_encs[i]) {
-			sde_enc->phys_encs[i]->cont_splash_enabled = false;
-			sde_enc->phys_encs[i]->cont_splash_single_flush = 0;
-			sde_enc->phys_encs[i]->connector = NULL;
-		}
-	}
-
-	sde_enc->cur_master = NULL;
-	/*
-	 * clear the cached crtc in sde_enc on use case finish, after all the
-	 * outstanding events and timers have been completed
-	 */
-	sde_enc->crtc = NULL;
-
-	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
+	if (!sde_encoder_in_clone_mode(drm_enc))
+		sde_encoder_virt_reset(drm_enc);
 }
 
 void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
@@ -4182,6 +4302,15 @@ static void sde_encoder_frame_done_callback(
 	sde_enc->crtc_frame_event_cb_data.connector =
 				sde_enc->cur_master->connector;
 
+	/* every cwb frame done should trigger one crtc frame callback event */
+	if (event & SDE_ENCODER_FRAME_EVENT_CWB_DONE) {
+		if (sde_enc->crtc_frame_event_cb)
+				sde_enc->crtc_frame_event_cb(
+					&sde_enc->crtc_frame_event_cb_data,
+					event);
+		return;
+	}
+
 	if (event & (SDE_ENCODER_FRAME_EVENT_DONE
 			| SDE_ENCODER_FRAME_EVENT_ERROR
 			| SDE_ENCODER_FRAME_EVENT_PANEL_DEAD)) {
@@ -4274,6 +4403,23 @@ int sde_encoder_get_ctlstart_timeout_state(struct drm_encoder *drm_enc)
 
 	return count;
 }
+
+void sde_encoder_get_border_color(struct drm_encoder *drm_enc,
+		bool *en, struct sde_drm_color *color)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	if (!drm_enc || !en || !color)
+		return;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	*en = sde_enc->border_color_en;
+
+	if (*en)
+		memcpy(color, &sde_enc->border_color,
+			sizeof(sde_enc->border_color));
+}
+
 /**
  * _sde_encoder_trigger_flush - trigger flush for a physical encoder
  * drm_enc: Pointer to drm encoder structure
@@ -5860,6 +6006,11 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	sde_enc->te_source = disp_info->te_source;
 
 	SDE_DEBUG("disp_info->num_of_h_tiles %d\n", disp_info->num_of_h_tiles);
+
+	sde_enc->border_color_en = disp_info->border_color_en;
+	if (sde_enc->border_color_en)
+		memcpy(&sde_enc->border_color, &disp_info->border_color,
+				sizeof(disp_info->border_color));
 
 	if ((disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE) ||
 	    (disp_info->capabilities & MSM_DISPLAY_CAP_VID_MODE))

@@ -480,7 +480,8 @@ static int edp_config_vco_rate_7nm(struct dp_pll_vco_clk *vco,
 	return res;
 }
 
-static bool edp_7nm_pll_lock_status(struct mdss_pll_resources *edp_res)
+static bool edp_7nm_pll_lock_status(struct mdss_pll_resources *edp_res,
+		bool check_only)
 {
 	u32 status;
 	bool pll_locked = true;
@@ -491,7 +492,10 @@ static bool edp_7nm_pll_lock_status(struct mdss_pll_resources *edp_res)
 			((status & BIT(0)) > 0),
 			DP_PHY_PLL_POLL_SLEEP_US,
 			DP_PHY_PLL_POLL_TIMEOUT_US)) {
-		pr_err("C_READY status is not high. Status=%x\n", status);
+		if (check_only)
+			pr_debug("C_READY status is not high. Status=%x\n", status);
+		else
+			pr_err("C_READY status is not high. Status=%x\n", status);
 		pll_locked = false;
 	} else {
 		pll_locked = true;
@@ -539,7 +543,7 @@ static int edp_pll_enable_7nm(struct clk_hw *hw)
 	MDSS_PLL_REG_W(edp_res->pll_base, QSERDES_COM_RESETSM_CNTRL, 0x20);
 	wmb();	/* Make sure the PLL register writes are done */
 
-	if (!edp_7nm_pll_lock_status(edp_res)) {
+	if (!edp_7nm_pll_lock_status(edp_res, false)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
@@ -786,7 +790,7 @@ unsigned long edp_vco_recalc_rate_7nm(struct clk_hw *hw,
 	}
 
 	edp_res->handoff_resources = false;
-	if (edp_7nm_pll_lock_status(edp_res) && !edp_res->skip_handoff) {
+	if (edp_7nm_pll_lock_status(edp_res, true) && !edp_res->skip_handoff) {
 		pr_info("PLL is enabled\n");
 		edp_res->handoff_resources = true;
 	} else {

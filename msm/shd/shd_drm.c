@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -130,7 +130,7 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 {
 	struct drm_encoder *encoder;
 	struct sde_connector *sde_conn;
-	struct sde_encoder_hw_resources hw_res;
+	struct sde_encoder_hw_resources hw_res = {};
 	struct sde_connector_state conn_state = {};
 	bool has_mst;
 	int rc = 0;
@@ -791,6 +791,7 @@ static int shd_connector_get_mode_info(struct drm_connector *connector,
 		max_mixer_width,
 		base_conn->display);
 	mode_info->topology = base_mode_info.topology;
+	mode_info->comp_info = base_mode_info.comp_info;
 
 	if (shd_display->src.h != shd_display->roi.h)
 		mode_info->vpadding = shd_display->roi.h;
@@ -815,7 +816,8 @@ enum drm_connector_status shd_connector_detect(struct drm_connector *conn,
 	b_conn =  disp->base->connector;
 	if (b_conn) {
 		sde_conn = to_sde_connector(b_conn);
-		status = disp->base->ops.detect(b_conn,
+		if (disp->base->ops.detect)
+			status = disp->base->ops.detect(b_conn,
 						force, sde_conn->display);
 	}
 
@@ -1192,6 +1194,9 @@ static int shd_drm_obj_init(struct shd_display *display)
 		SDE_ERROR("shd get_info failed\n");
 		goto end;
 	}
+
+	sde_encoder_get_border_color(display->base->encoder,
+			&info.border_color_en, &info.border_color);
 
 	encoder = sde_encoder_init_with_ops(dev, &info, &enc_ops);
 	if (IS_ERR_OR_NULL(encoder)) {

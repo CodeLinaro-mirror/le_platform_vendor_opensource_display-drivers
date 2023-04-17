@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,6 +25,9 @@ struct dp_display_info {
 	u32 cell_idx;
 	u32 intf_idx[DP_STREAM_MAX];
 	u32 phy_idx;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 struct dp_display_bond_displays {
@@ -64,6 +68,7 @@ struct dp_display {
 	void *dp_mst_prv_info;
 	void *dp_bond_prv_info;
 	bool force_bond_mode;
+	bool force_connect_mode;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);
@@ -85,6 +90,7 @@ struct dp_display {
 	int (*config_hdr)(struct dp_display *dp_display, void *panel,
 				struct drm_msm_ext_hdr_metadata *hdr_meta);
 	int (*post_init)(struct dp_display *dp_display);
+	int (*after_init)(struct dp_display *dp_display);
 	int (*mst_install)(struct dp_display *dp_display,
 			struct dp_mst_drm_install_info *mst_install_info);
 	int (*mst_uninstall)(struct dp_display *dp_display);

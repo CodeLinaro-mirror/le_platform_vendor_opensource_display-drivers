@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -30,6 +31,7 @@
 #define SDE_ENCODER_FRAME_EVENT_PANEL_DEAD		BIT(2)
 #define SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE	BIT(3)
 #define SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE	BIT(4)
+#define SDE_ENCODER_FRAME_EVENT_CWB_DONE		BIT(5)
 
 #define IDLE_POWERCOLLAPSE_DURATION	(66 - 16/2)
 #define IDLE_POWERCOLLAPSE_IN_EARLY_WAKEUP (200 - 16/2)
@@ -43,6 +45,7 @@
  *                          interface
  * @is_primary: set to true if the display is primary display
  * @topology:   Topology of the display
+ * @cwb_pp_ratio: pingpong ratio for pingpong hardware reservation in cwb case
  */
 struct sde_encoder_hw_resources {
 	enum sde_intf_mode intfs[INTF_MAX];
@@ -51,6 +54,7 @@ struct sde_encoder_hw_resources {
 	u32 display_num_of_h_tiles;
 	bool is_primary;
 	struct msm_display_topology topology;
+	uint32_t cwb_pp_ratio;
 };
 
 /**
@@ -324,7 +328,24 @@ void sde_encoder_recovery_events_handler(struct drm_encoder *encoder,
  */
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
+/*
+ * sde_encoder_is_cwb_disabling - check if cwb encoder disable is pending
+ * @drm_enc:    Pointer to drm encoder structure
+ * @drm_crtc:    Pointer to drm crtc structure
+ * @Return: true if cwb encoder disable is pending
+ */
+bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
+	struct drm_crtc *drm_crtc);
+
 /**
+ * sde_encoder_set_clone_mode - cwb in wb phys enc is enabled.
+ * drm_enc:	Pointer to drm encoder structure
+ * drm_crtc_state:	Pointer to drm_crtc_state
+ */
+void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
+	 struct drm_crtc_state *crtc_state);
+
+/*
  *sde_encoder_is_topology_ppsplit - checks if the current encoder is in
 	ppsplit topology.
  *@drm_enc:	Pointer to drm encoder structure
@@ -348,6 +369,12 @@ bool sde_encoder_is_primary_display(struct drm_encoder *enc);
 void sde_encoder_control_idle_pc(struct drm_encoder *enc, bool enable);
 
 /**
+ * sde_encoder_virt_reset - delay encoder virt reset
+ * @drm_enc:»       Pointer to drm encoder structure
+ */
+void sde_encoder_virt_reset(struct drm_encoder *drm_enc);
+
+/**
  * sde_encoder_in_cont_splash - checks if display is in continuous splash
  * @drm_enc:    Pointer to drm encoder structure
  * @Return:     true if display in continuous splash
@@ -360,5 +387,14 @@ int sde_encoder_in_cont_splash(struct drm_encoder *enc);
  * @Return:     non zero value if ctl start timeout occurred
  */
 int sde_encoder_get_ctlstart_timeout_state(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_get_border_color - get border color info
+ * @drm_enc:    Pointer to drm encoder structure
+ * @en：    true if border color is configed for this encorder
+ * @color:    border color info
+ */
+void sde_encoder_get_border_color(struct drm_encoder *drm_enc,
+		bool *en, struct sde_drm_color *color);
 
 #endif /* __SDE_ENCODER_H__ */

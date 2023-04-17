@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
@@ -180,12 +180,26 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 		pr_info("connect pending, hpd isr state: 0x%x\n", isr);
 		break;
 	case DP_HPD_STATUS_CONNECTED:
-		if (!(isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS)))
-			pr_info("connect but no interrupt, hpd isr state: 0x%x\n", isr);
-		if (isr & DP_HPD_UNPLUG_INT_STATUS)
-			pr_info("missed disconnect interrupt, hpd isr state: 0x%x\n", isr);
-		if (isr & DP_IRQ_HPD_INT_STATUS)
-			pr_info("missed hpd_irq interrupt, hpd isr state: 0x%x\n", isr);
+		if (!(isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS
+			| DP_IRQ_HPD_INT_STATUS)) && !lphw_hpd->hpd)
+			pr_debug("connect but no interrupt, hpd isr state: 0x%x\n", isr);
+		if (isr & DP_HPD_UNPLUG_INT_STATUS) {
+			if (lphw_hpd->base.hpd_high) {
+				pr_info("missed disconnect interrupt, hpd isr state: 0x%x\n", isr);
+				lphw_hpd->hpd = false;
+				lphw_hpd->base.hpd_high = false;
+				lphw_hpd->base.alt_mode_cfg_done = false;
+				lphw_hpd->base.hpd_irq = false;
+
+				rc = queue_work(lphw_hpd->connect_wq,
+						&lphw_hpd->disconnect);
+				if (!rc)
+					pr_debug("disconnect not queued\n");
+			} else {
+				pr_info("missed multiple disconnect/connect interrupts, hpd isr state: 0x%x\n",
+						isr);
+			}
+		}
 		break;
 	case DP_HPD_STATUS_HPD_IO_GLITCH_COUNT:
 		pr_info("hpd io glich counting, hpd isr state: 0x%x\n", isr);
@@ -222,16 +236,15 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
 			!(isr & DP_IRQ_HPD_INT_STATUS)) { /* connected status */
 
-		pr_debug("connect interrupt, hpd isr state: 0x%x\n", isr);
-
 		if (!lphw_hpd->hpd) {
+			pr_debug("connect interrupt, hpd isr state: 0x%x\n", isr);
 			lphw_hpd->hpd = true;
 			rc = queue_work(lphw_hpd->connect_wq,
 					&lphw_hpd->connect);
 			if (!rc)
 				pr_debug("connect not queued\n");
 		} else {
-			pr_info("already connected\n");
+			pr_info("redundent connect interrupt, hpd isr state: 0x%x\n", isr);
 		}
 
 	} else if ((status == DP_HPD_STATUS_CONNECTED) &&

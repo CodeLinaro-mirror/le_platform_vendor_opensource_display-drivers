@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -23,6 +24,7 @@
 #define DSI_CLIENT_NAME_SIZE		20
 #define MAX_CMDLINE_PARAM_LEN	 512
 #define MAX_CMD_PAYLOAD_SIZE	256
+
 /*
  * DSI Validate Mode modifiers
  * @DSI_VALIDATE_FLAG_ALLOW_ADJUST:	Allow mode validation to also do fixup
@@ -184,6 +186,8 @@ struct dsi_display_ext_bridge {
  * @misr_frame_count  Number of frames to accumulate the MISR value
  * @esd_trigger       field indicating ESD trigger through debugfs
  * @te_source         vsync source pin information
+ * @border_color_en   bool to specify whether bodercolor should enable
+ * @border_color      boder color information for DSI display
  */
 struct dsi_display {
 	struct platform_device *pdev;
@@ -267,6 +271,9 @@ struct dsi_display {
 	struct dsi_display_boot_param *boot_disp;
 
 	u32 te_source;
+
+	bool border_color_en;
+	struct sde_drm_color border_color;
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
