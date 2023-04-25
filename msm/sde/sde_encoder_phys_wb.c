@@ -1710,7 +1710,13 @@ static void sde_encoder_phys_wb_get_hw_resources(
 	hw_wb = wb_enc->hw_wb;
 	hw_res->wbs[hw_wb->idx - WB_0] = phys_enc->intf_mode;
 	hw_res->needs_cdm = fmt ? SDE_FORMAT_IS_YUV(fmt) : false;
-	hw_res->cwb_pp_ratio = crtc->mixers[0].hw_lm->cap->pingpong;
+
+	/*if it's first frame of crtc, the hw_lm hasn't been set */
+	if (crtc->mixers[0].hw_lm == NULL)
+		hw_res->cwb_pp_ratio = 0;
+	else
+		hw_res->cwb_pp_ratio = crtc->mixers[0].hw_lm->cap->pingpong;
+
 	SDE_DEBUG("[wb:%d] intf_mode=%d needs_cdm=%d cwb_pp_ratio=%d\n",
 			hw_wb->idx - WB_0,
 			hw_res->wbs[hw_wb->idx - WB_0],

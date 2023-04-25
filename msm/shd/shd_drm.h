@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -81,5 +82,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 u32 shd_get_shared_crtc_mask(struct drm_crtc *crtc);
 void shd_skip_shared_plane_update(struct drm_plane *plane,
 			struct drm_crtc *crtc);
+/* helper to get shared display*/
+struct shd_display *shd_get_shared_display(struct drm_crtc *crtc);
 
 #endif /* _SHD_DRM_H_ */

@@ -426,6 +426,25 @@ void shd_skip_shared_plane_update(struct drm_plane *plane,
 			sde_crtc->mixers[i].hw_ctl, sspp, is_virtual);
 }
 
+struct shd_display *shd_get_shared_display(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct shd_crtc *shd_crtc;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return NULL;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	shd_crtc = sde_crtc->priv_handle;
+
+	if (shd_crtc)
+		return shd_crtc->display;
+
+	return NULL;
+}
+
 static int shd_display_set_default_clock(struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state,
 		struct drm_display_mode *mode)

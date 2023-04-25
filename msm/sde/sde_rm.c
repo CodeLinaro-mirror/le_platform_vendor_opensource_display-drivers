@@ -21,6 +21,7 @@
 #include "sde_crtc.h"
 #include "sde_hw_qdss.h"
 #include "sde_hw_roi_misr.h"
+#include "shd_drm.h"
 
 #define RESERVED_BY_OTHER(h, e) \
 	((h)->enc_id && ((h)->enc_id != (e)))
@@ -1255,6 +1256,7 @@ static int _sde_rm_reserve_lms(
 	for (i = 0; i < lm_count; i++) {
 		lm[i]->enc_id = enc_id;
 		pp[i]->enc_id = enc_id;
+
 		if (dspp[i])
 			dspp[i]->enc_id = enc_id;
 
@@ -1972,6 +1974,71 @@ static int _sde_rm_make_next_rsvp_for_cont_splash(
 	return ret;
 }
 
+static int get_cwb_pp_ratio(struct sde_rm *rm, struct drm_encoder *enc,
+		struct drm_crtc_state *crtc_state)
+{
+	struct drm_crtc *crtc = NULL;
+	struct drm_encoder *encoder = NULL;
+	struct sde_rm_hw_iter lm_iter;
+	struct sde_hw_mixer *hw_lm;
+	struct sde_crtc *sde_crtc;
+	struct shd_display *display = NULL;
+	struct shd_display_base *base = NULL;
+	int rc = 0;
+
+	if (!rm || !enc || !crtc_state) {
+		SDE_ERROR("invalid input rm or encoder or crtc_state\n");
+		return 0;
+	}
+
+	crtc = crtc_state->crtc;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return 0;
+	}
+
+	drm_for_each_encoder_mask(encoder, enc->dev, crtc_state->encoder_mask) {
+		if (drm_encoder_mask(encoder) == drm_encoder_mask(enc))
+			continue;
+		else
+			break;
+	}
+
+	if (!encoder) {
+		SDE_ERROR("don't find primary encoder\n");
+		return 0;
+	}
+
+	/* check shared display*/
+	display = shd_get_shared_display(crtc);
+	if (display)
+		base = display->base;
+
+	if (base)
+		encoder = base->encoder;
+
+	if (encoder) {
+		sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
+		rc = sde_rm_atomic_get_hw(rm, crtc_state->state, &lm_iter);
+		if (!rc) {
+			SDE_ERROR("can't find lm for primary encoder\n");
+			return 0;
+		}
+	} else {
+		SDE_ERROR("don't find base encoder of shared display\n");
+		return 0;
+	}
+
+	hw_lm = lm_iter.hw;
+	if (hw_lm)
+		return hw_lm->cap->pingpong;
+	else {
+		SDE_ERROR("invalid primary layer mixer\n");
+		return 0;
+	}
+}
+
 static int _sde_rm_populate_requirements(
 		struct sde_rm *rm,
 		struct drm_encoder *enc,
@@ -2042,6 +2109,11 @@ static int _sde_rm_populate_requirements(
 
 		SDE_EVT32(num_lm, reqs->topology->num_lm,
 			reqs->topology->top_name, reqs->topology->num_ctl);
+	}
+
+	if (RM_RQ_CWB(reqs) && !reqs->hw_res.cwb_pp_ratio) {
+		reqs->hw_res.cwb_pp_ratio = get_cwb_pp_ratio(rm, enc, crtc_state);
+		SDE_DEBUG("cwb_pp_ratio=%d\n", reqs->hw_res.cwb_pp_ratio);
 	}
 
 	SDE_DEBUG("top_ctrl: 0x%llX num_h_tiles: %d\n", reqs->top_ctrl,
