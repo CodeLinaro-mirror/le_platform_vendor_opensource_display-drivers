@@ -8,7 +8,7 @@
  * Copyright © 2017 Keith Packard <keithp@keithp.com>
  */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 /*
  * Created: Tue Feb  2 08:37:54 1999 by faith@valinux.com
@@ -567,6 +567,12 @@ static int msm_lease_add_connector(struct drm_device *dev, const char *name,
 	struct drm_connector_list_iter conn_iter;
 	int conn_id = -1, crtc_id = -1;
 	int rc = 0;
+	struct msm_drm_private *priv = dev->dev_private;
+
+	if (priv == NULL) {
+		DRM_ERROR("Invalid device\n");
+		return -EINVAL;
+	}
 
 	if (*object_count >= MAX_LEASE_OBJECT_COUNT - 1) {
 		DRM_ERROR("too many objects added %d\n", *object_count);
@@ -620,8 +626,13 @@ static int msm_lease_add_connector(struct drm_device *dev, const char *name,
 		goto out;
 	}
 
-	/* unique connector-crtc mapping is required by cont splash */
-	encoder->possible_crtcs = drm_crtc_mask(crtc);
+	/* the wb encoder can attach to all the crtcs */
+	if (encoder->encoder_type == DRM_MODE_ENCODER_VIRTUAL) {
+		encoder->possible_crtcs = (1 << priv->num_crtcs) - 1;
+	} else {
+		/* unique connector-crtc mapping is required by cont splash */
+		encoder->possible_crtcs = drm_crtc_mask(crtc);
+	}
 
 	object_ids[(*object_count)++] = conn_id;
 	object_ids[(*object_count)++] = crtc_id;
@@ -758,7 +769,7 @@ static int msm_lease_parse_objs(struct drm_device *dev,
 	}
 
 	if (count > *object_count) {
-		DRM_ERROR("connectors are more than planes\n");
+		DRM_ERROR("connectors are more than planes count %d obj %d\n", count, *object_count);
 		return -EINVAL;
 	}
 
