@@ -385,6 +385,15 @@ void dsi_display_put_mode(struct dsi_display *display,
 	struct dsi_display_mode *mode);
 
 /**
+ * dsi_conn_get_lm_from_mode() - retrieves LM count from dsi mode priv info
+ * @display:            Handle to display.
+ * @mode:               Pointer to DRM mode structure
+ *
+ * Return: LM count from dsi panel topology
+ */
+int dsi_conn_get_lm_from_mode(void *dsi_display, const struct drm_display_mode *mode);
+
+/**
  * dsi_display_find_mode() - retrieve cached DSI mode given relevant params
  * @display:            Handle to display.
  * @cmp:                Mode to use as comparison to find original

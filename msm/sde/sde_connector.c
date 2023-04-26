@@ -311,6 +311,45 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	return 0;
 }
 
+int sde_connector_get_lm_cnt_from_topology(struct drm_connector *conn,
+		const struct drm_display_mode *drm_mode)
+{
+	struct sde_connector *c_conn;
+	struct msm_mode_info mode_info;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	int rc = 0;
+
+	if (!conn || !conn->dev || !conn->dev->dev_private) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	priv = conn->dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+	c_conn = to_sde_connector(conn);
+
+	if (!c_conn->ops.get_mode_info)
+		return -EINVAL;
+
+	/* to get topology.num_lm from mode_info, if get_mode_info fail, will try to
+	 * get topology.num_lm from function get_num_lm_from_mode
+	 */
+	memset(&mode_info, 0, sizeof(mode_info));
+	rc = c_conn->ops.get_mode_info(&c_conn->base, drm_mode, &mode_info,
+			sde_kms->catalog->max_mixer_width,
+			c_conn->display);
+	if (!rc)
+		return mode_info.topology.num_lm;
+
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		if (c_conn->ops.get_num_lm_from_mode)
+			return c_conn->ops.get_num_lm_from_mode(c_conn->display, drm_mode);
+	}
+
+	return -EINVAL;
+}
+
 int sde_connector_get_mode_info(struct drm_connector_state *conn_state,
 	struct msm_mode_info *mode_info)
 {

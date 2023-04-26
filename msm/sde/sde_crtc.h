@@ -903,9 +903,10 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state,
  *				of primary connector
  * @crtc: Pointer to DRM crtc object
  * @connector: Pointer to DRM connector object of WB in CWB case
+ * @crtc_state:	Pointer to DRM crtc state
  */
 int sde_crtc_get_num_datapath(struct drm_crtc *crtc,
-		struct drm_connector *connector);
+	struct drm_connector *connector, struct drm_crtc_state *crtc_state);
 
 /**
  * sde_crtc_state_set_topology_name - set current topology name

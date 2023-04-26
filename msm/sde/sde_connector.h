@@ -342,6 +342,14 @@ struct sde_connector_ops {
 	 */
 	int (*get_tile_map)(struct drm_connector *connector,
 			void *display, int num_tile, int *tile_map);
+
+	/**
+	 * get_num_lm_from_mode - Get LM count from topology for this drm mode
+	 * @display: Pointer to private display structure
+	 * @mode: Pointer to drm mode info structure
+	 */
+	int (*get_num_lm_from_mode)(void *display, const struct drm_display_mode *mode);
+
 };
 
 /**
@@ -901,6 +909,15 @@ void sde_connector_schedule_status_work(struct drm_connector *conn, bool en);
 int sde_connector_helper_reset_custom_properties(
 		struct drm_connector *connector,
 		struct drm_connector_state *connector_state);
+
+/**
+ * sde_connector_get_lm_cnt_from_topology - retrieves the topology info
+ *	from the panel mode and returns the lm count.
+ * conn: Pointer to DRM connector object
+ * drm_mode: Pointer to the drm mode structure
+ */
+int sde_connector_get_lm_cnt_from_topology(struct drm_connector *conn,
+	 const struct drm_display_mode *drm_mode);
 
 /**
  * sde_connector_helper_mode_change_commit - null commit with mode changed set
