@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -1763,6 +1764,8 @@ static int sde_mixer_parse_dt(struct device_node *np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);
 		if (disp_pref && !strcmp(disp_pref, "primary"))
 			set_bit(SDE_DISP_PRIMARY_PREF, &mixer->features);
+		else if (disp_pref && !strcmp(disp_pref, "secondary"))
+			set_bit(SDE_DISP_SECONDARY_PREF, &mixer->features);
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_CWB].prop_name, i, &cwb_pref);
