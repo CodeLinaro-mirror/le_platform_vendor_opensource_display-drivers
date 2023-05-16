@@ -1621,7 +1621,11 @@ static int dp_mst_fixed_connector_get_info(struct drm_connector *connector,
 			continue;
 		dp_display->mst_get_fixed_topology_display_type(dp_display,
 				mst->mst_bridge[i].id, &display_type);
-		if (display_type && !strcmp(display_type, "primary"))
+		if (!display_type) {
+			pr_err("invalid display_type\n");
+			return -EINVAL;
+		}
+		if (!strcmp(display_type, "primary"))
 			info->display_type = SDE_CONNECTOR_PRIMARY;
 		else if (!strcmp(display_type, "secondary"))
 			info->display_type = SDE_CONNECTOR_SECONDARY;

@@ -3845,6 +3845,14 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sde_enc->input_handler_registered = true;
 	}
 
+	if (!drm_enc->crtc) {
+		SDE_ERROR("invaild crtc\n");
+		return;
+	} else if (!drm_enc->crtc->state) {
+		SDE_ERROR("invaild state\n");
+		return;
+	}
+
 	if ((drm_enc->crtc->state->connectors_changed &&
 			sde_encoder_in_clone_mode(drm_enc)) ||
 			!(msm_is_mode_seamless_vrr(cur_mode)
