@@ -44,9 +44,9 @@
 #endif
 
 #if defined(__linux__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LV_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LV_FE"
 #elif defined(__ANDROID__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LA_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LA_FE"
 #endif
 
 #define USER_OS_UTILS_LOG_MODULE_ID       10256
@@ -529,14 +529,14 @@ retry_recv_packet:
 			payload_type, resp_size, rc);
 		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
 		{
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock fisrt
-			 */
 			if (handle) {
 				if (rel_hab_handle(ctx, chl_id, 0x00))
 					UTILS_LOG_ERROR("rel_hab_handle failed");
 			}
+			/*
+			 * Add this msleep to let watch dog thread can be feed
+			 * need release lock fisrt
+			 */
 			msleep(1);
 			handle = get_hab_handle(ctx, &chl_id, 0x00);
 			if (!handle) {
@@ -588,14 +588,14 @@ retry_recv_packet:
 #endif
 			rc = -1;
 		} else {
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock fisrt
-			 */
 			if (handle) {
 				if (rel_hab_handle(ctx, chl_id, 0x00))
 					UTILS_LOG_ERROR("rel_hab_handle failed");
 			}
+			/*
+			 * Add this msleep to let the watchdog thread can be feed
+			 * need release lock first
+			 */
 			msleep(1);
 			handle = get_hab_handle(ctx, &chl_id, 0x00);
 			if (!handle) {
@@ -609,7 +609,12 @@ retry_recv_packet:
 			goto retry_recv_packet;
 		}
 	}
+	else if (timestamp < resp->hdr.timestamp) {
+		UTILS_LOG_ERROR(" Wrong packet timestamp req : %lu res : %lu \n", timestamp, resp->hdr.timestamp);
+		rc = -1;
+		goto end;
 
+	}
 	if (payload_type == OPENWFD_CMD) {
 		if (num_of_wfd_cmds != resp->payload.wfd_resp.num_of_cmds) {
 			UTILS_LOG_ERROR("num_of_wfd_cmds mismatch req=%d resp=%d",
