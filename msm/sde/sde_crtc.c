@@ -4738,13 +4738,14 @@ static int _sde_crtc_excl_dim_layer_check(struct drm_crtc_state *state,
 	const struct drm_plane_state *pstate;
 	struct sde_plane_state *sde_pstate;
 	int rc = 0, i;
+	bool is_fsc = sde_crtc_is_connector_fsc(cstate);
 
 	/* Check dim layer rect bounds and stage */
 	for (i = 0; i < cstate->num_dim_layers; i++) {
 		if ((CHECK_LAYER_BOUNDS(cstate->dim_layer[i].rect.y,
-			cstate->dim_layer[i].rect.h, mode->vdisplay)) ||
+			cstate->dim_layer[i].rect.h, GET_MODE_HEIGHT(is_fsc, mode))) ||
 		    (CHECK_LAYER_BOUNDS(cstate->dim_layer[i].rect.x,
-			cstate->dim_layer[i].rect.w, mode->hdisplay)) ||
+			cstate->dim_layer[i].rect.w, GET_MODE_WIDTH(is_fsc, mode))) ||
 		    (cstate->dim_layer[i].stage >= SDE_STAGE_MAX) ||
 		    (!cstate->dim_layer[i].rect.w) ||
 		    (!cstate->dim_layer[i].rect.h)) {
@@ -4754,8 +4755,8 @@ static int _sde_crtc_excl_dim_layer_check(struct drm_crtc_state *state,
 					cstate->dim_layer[i].rect.w,
 					cstate->dim_layer[i].rect.h,
 					cstate->dim_layer[i].stage);
-			SDE_ERROR("display: %dx%d\n", mode->hdisplay,
-					mode->vdisplay);
+			SDE_ERROR("display: %dx%d\n", GET_MODE_WIDTH(is_fsc, mode),
+					GET_MODE_HEIGHT(is_fsc, mode));
 			rc = -E2BIG;
 			goto end;
 		}
@@ -5356,6 +5357,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 
 		pstate = to_sde_plane_state(plane_state);
 		layout_split = crtc_state->mode.hdisplay >> 1;
+		if (sde_crtc_is_connector_fsc(to_sde_crtc_state(crtc_state)))
+			layout_split /= PLANAR_RGB_PACKING;
 
 		if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;
