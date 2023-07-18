@@ -1974,7 +1974,66 @@ static int _sde_rm_make_next_rsvp_for_cont_splash(
 	return ret;
 }
 
-static int get_cwb_pp_ratio(struct sde_rm *rm, struct drm_encoder *enc,
+static bool _sde_rm_get_lm_from_display_type(struct sde_rm *rm,
+		struct sde_rm_hw_iter *i, uint32_t display_type)
+{
+	const struct sde_lm_cfg *lm_cfg;
+	struct list_head *blk_list;
+	struct sde_rm_state *state;
+	bool is_conn_primary, is_conn_secondary;
+	u32 lm_primary_pref, lm_secondary_pref;
+
+	if (!rm || !i || i->type != SDE_HW_BLK_LM) {
+		SDE_ERROR("invalid rm\n");
+		return false;
+	}
+
+	state = to_sde_rm_priv_state(rm->obj.state);
+
+	if (!state) {
+		SDE_ERROR("invalid state\n");
+		return false;
+	}
+
+	is_conn_primary = (display_type == SDE_CONNECTOR_PRIMARY) ? true : false;
+	is_conn_secondary = (display_type == SDE_CONNECTOR_SECONDARY) ? true : false;
+
+	i->hw = NULL;
+	blk_list = &state->hw_blks[i->type];
+
+	if (i->blk && (&i->blk->list == blk_list)) {
+		SDE_DEBUG("attempt resume iteration past last\n");
+		return false;
+	}
+
+	i->blk = list_prepare_entry(i->blk, blk_list, list);
+
+	list_for_each_entry_continue(i->blk, blk_list, list) {
+		if (i->blk->type != i->type) {
+			SDE_ERROR("found incorrect block type %d on %d list\n",
+					i->blk->type, i->type);
+			return false;
+		}
+
+		lm_cfg = to_sde_hw_mixer(i->blk->hw)->cap;
+		lm_primary_pref = lm_cfg->features & BIT(SDE_DISP_PRIMARY_PREF);
+		lm_secondary_pref = lm_cfg->features & BIT(SDE_DISP_SECONDARY_PREF);
+
+		SDE_DEBUG("pref %x %x\n", lm_primary_pref, lm_secondary_pref);
+
+		if ((lm_primary_pref && is_conn_primary) ||
+			(lm_secondary_pref && is_conn_secondary)) {
+			i->hw = i->blk->hw;
+			SDE_DEBUG("expect type %d id %d for enc %d\n",
+					i->type, i->blk->id, i->enc_id);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static int _sde_rm_get_cwb_pp_ratio(struct sde_rm *rm, struct drm_encoder *enc,
 		struct drm_crtc_state *crtc_state)
 {
 	struct drm_crtc *crtc = NULL;
@@ -1984,6 +2043,7 @@ static int get_cwb_pp_ratio(struct sde_rm *rm, struct drm_encoder *enc,
 	struct sde_crtc *sde_crtc;
 	struct shd_display *display = NULL;
 	struct shd_display_base *base = NULL;
+	uint32_t display_type;
 	int rc = 0;
 
 	if (!rm || !enc || !crtc_state) {
@@ -2022,8 +2082,14 @@ static int get_cwb_pp_ratio(struct sde_rm *rm, struct drm_encoder *enc,
 		sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 		rc = sde_rm_atomic_get_hw(rm, crtc_state->state, &lm_iter);
 		if (!rc) {
-			SDE_ERROR("can't find lm for primary encoder\n");
-			return 0;
+			display_type = sde_encoder_get_display_type(encoder);
+
+			sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
+			if (!_sde_rm_get_lm_from_display_type(rm, &lm_iter, display_type)) {
+				SDE_ERROR("not config lm pref for display type %d\n",
+					display_type);
+				return 0;
+			}
 		}
 	} else {
 		SDE_ERROR("don't find base encoder of shared display\n");
@@ -2112,7 +2178,8 @@ static int _sde_rm_populate_requirements(
 	}
 
 	if (RM_RQ_CWB(reqs) && !reqs->hw_res.cwb_pp_ratio) {
-		reqs->hw_res.cwb_pp_ratio = get_cwb_pp_ratio(rm, enc, crtc_state);
+		reqs->hw_res.cwb_pp_ratio = _sde_rm_get_cwb_pp_ratio(rm, enc,
+			crtc_state);
 		SDE_DEBUG("cwb_pp_ratio=%d\n", reqs->hw_res.cwb_pp_ratio);
 	}
 

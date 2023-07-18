@@ -399,4 +399,21 @@ int sde_encoder_get_ctlstart_timeout_state(struct drm_encoder *enc);
 void sde_encoder_get_border_color(struct drm_encoder *drm_enc,
 		bool *en, struct sde_drm_color *color);
 
+/**
+ * sde_encoder_get_display_type - returns the display_type of underlying
+ *     display
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     display_type
+ */
+u32 sde_encoder_get_display_type(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_update_info - update the disp_info of sde encoder
+ * @drm_enc:    Pointer to drm encoder structure
+ * @drm_conn:   Pointer to drm connector structure
+ * @Return:     non zero value if update disp_info failed
+ */
+int sde_encoder_update_info(struct drm_encoder *drm_enc,
+		struct drm_connector *drm_conn);
+
 #endif /* __SDE_ENCODER_H__ */
