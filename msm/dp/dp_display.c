@@ -1660,7 +1660,7 @@ static int dp_display_after_init(struct dp_display *dp_display)
 		 * connector modes when link training is still running.
 		 */
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		dp_display_process_hpd_high(dp, true);
+		dp_display_process_hpd_high(dp);
 		dp_display_send_hpd_notification(dp);
 	}
 end:
