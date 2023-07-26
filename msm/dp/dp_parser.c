@@ -1108,6 +1108,8 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 	size_t parsed = 0;
 	u8 dsc_version = 0;
 	const char *data = NULL;
+	int rc = 0;
+	u32 tmp;
 
 	struct device *dev = &parser->pdev->dev;
 	struct device_node *dsc_passthrough_root_node = NULL;
@@ -1128,6 +1130,10 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 	parser->dsc_passthrough.dsc_passthrough_enable =
 			of_property_read_bool(dsc_passthrough_root_node,
 					"qcom,dsc-passthrough-enable");
+
+	rc = of_property_read_u32(dsc_passthrough_root_node,
+				"qcom,dsc-compression-ratio",
+				&tmp);
 
 	if (parser->dsc_passthrough.dsc_passthrough_enable) {
 		data = of_get_property(dsc_passthrough_root_node,
@@ -1168,7 +1174,7 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 
 		/* Byte [0] [7:4]dsc_version_major & [3:0]dsc_version_minor */
 		dsc_version = read_char_from_byte_stream(data, &parsed);
-		dsc_info->config.dsc_version_major = dsc_version & 0xF0;
+		dsc_info->config.dsc_version_major = (dsc_version & 0xF0) >> 4;
 		dsc_info->config.dsc_version_minor = dsc_version & 0x0F;
 
 		/* Byte [1] pps_identifier SKIPPED */
@@ -1207,7 +1213,7 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		/* Bytes [4] [1:0]bits_per_pixel [5] [7:0]bits_per_pixel */
 		dsc_info->config.bits_per_pixel =
 				(read_n_bits_from_byte_stream(data, &parsed, 1, 2) << 8) |
-				(read_char_from_byte_stream(data, &parsed) >> 4);
+				(read_char_from_byte_stream(data, &parsed));
 				/* 4 Fractional bits */
 
 		/* Bytes [6][7:0]pic_height[1] [7][7:0]pic_height[0] */
@@ -1366,9 +1372,15 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		skip_n_bytes_from_byte_stream(&parsed, 40);
 	}
 
+	parser->dsc_passthrough.comp_info.tgt_bpp = dsc_info->config.bits_per_pixel >> 4;
+
 	pr_debug("dsc passthrough parsing successful. Parsed = %d bytes enable:%d\n",
 			parsed,
 			parser->dsc_passthrough.dsc_passthrough_enable);
+	pr_debug("dsc compression-ratio=%d, src-bpp=%d, tgt-bpp=%d\n",
+			parser->dsc_passthrough.comp_info.comp_ratio,
+			parser->dsc_passthrough.comp_info.src_bpp,
+			parser->dsc_passthrough.comp_info.tgt_bpp);
 	pr_debug("out-byte-order-size:%d, dsc-version:%d-%d, pps-bits-per-component:%d\n",
 			dsc_info->out_byte_order_size,
 			dsc_info->config.dsc_version_major,
@@ -1424,8 +1436,6 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 			 dsc_info->config.rc_range_params[i].range_bpg_offset);
 	}
 
-	parser->dsc_passthrough.comp_info.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
-	parser->dsc_passthrough.comp_info.comp_ratio = 3;
 	return;
 
 error:
