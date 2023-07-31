@@ -375,7 +375,7 @@ static int hdmi_audio_register_ext_disp(struct lt9611 *pdata)
 
 	ext->codec.type = EXT_DISPLAY_TYPE_HDMI;
 	ext->codec.ctrl_id = 1;
-	ext->codec.stream_id = 1;
+	ext->codec.stream_id = 0;
 	ext->pdev = pdata->audio_pdev;
 	ext->intf_data = pdata;
 
@@ -2297,8 +2297,9 @@ static ssize_t edid_mode_show(struct device *dev,
 {
 	struct lt9611 *pdata = dev_get_drvdata(dev);
 
-	return scnprintf(buf, PAGE_SIZE, "%dx%d\n",
-			pdata->curr_mode.hdisplay, pdata->curr_mode.vdisplay);
+	return scnprintf(buf, PAGE_SIZE, "%dx%dx%d\n",
+			pdata->curr_mode.hdisplay, pdata->curr_mode.vdisplay,
+			drm_mode_vrefresh(&pdata->curr_mode));
 }
 
 static ssize_t edid_mode_store(struct device *dev,
@@ -2531,13 +2532,12 @@ static int lt9611_probe(struct i2c_client *client,
 	if (!cont_splash_en)
 		lt9611_reset(pdata, true);
 
+	msleep(200);
 	ret = lt9611_read_device_id(pdata);
 	if (ret) {
 		pr_err("failed to read chip rev\n");
 		goto err_i2c_prog;
 	}
-
-	msleep(200);
 
 	i2c_set_clientdata(client, pdata);
 	dev_set_drvdata(&client->dev, pdata);

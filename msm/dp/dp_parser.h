@@ -209,6 +209,8 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @get_io: function to be called by client to get io data.
  * @get_io_buf: function to be called by client to get io buffers.
  * @clear_io_buf: function to be called by client to clear io buffers.
+ * @no_audio_support: audio support disable status
+ * @dp_cec_feature: dp cec feature status.
  */
 struct dp_parser {
 	struct platform_device *pdev;
@@ -232,10 +234,12 @@ struct dp_parser {
 	bool yuv422_support;
 	bool has_widebus;
 	bool gpio_aux_switch;
+	bool no_audio_support;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
 	u32 dsc_version;
+	bool dp_cec_feature;
 
 	const char *display_type;
 
