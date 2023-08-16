@@ -312,6 +312,21 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 	return connector_type;
 }
 
+static bool formats_exist(uint32_t *formats, int count, uint32_t fmt)
+{
+	int i;
+
+	if (formats == NULL)
+		return false;
+
+	for (i = 0; i < count; i++) {
+		if (formats[i] == fmt)
+			return true;
+	}
+
+	return false;
+}
+
 static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 {
 	int i, j, n, ret = 0;
@@ -365,7 +380,11 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 		j = 0;
 		while (drm_wfd_formats[j].wfd_fmt || drm_wfd_formats[j].drm_fmt) {
 			if (formats[i] == drm_wfd_formats[j].wfd_fmt) {
-				priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+				/* skip the duplicated format */
+				if (!formats_exist(priv->base.format_types, n,
+					drm_wfd_formats[j].drm_fmt))
+					priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+
 				break;
 			}
 			j++;
@@ -504,7 +523,7 @@ static void wfd_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	struct msm_hyp_framebuffer *fb = to_msm_hyp_fb(framebuffer);
 	struct wfd_framebuffer_priv *fb_priv = container_of(fb->info,
 				struct wfd_framebuffer_priv, base);
-
+	int num_planes = fb->base.format->num_planes;
 	if (!fb->info)
 		return;
 
@@ -515,7 +534,8 @@ static void wfd_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	if (fb_priv->wfd_image != WFD_INVALID_HANDLE)
 		wfdDestroyWFDEGLImages_User(
 			fb_priv->wfd_device,
-			1, &fb_priv->wfd_image, NULL);
+			num_planes,
+			&fb_priv->wfd_image, NULL);
 
 	kfree(fb_priv);
 	fb->info = NULL;
@@ -526,41 +546,43 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 	struct wfd_framebuffer_priv *fb_priv = container_of(fb->info,
 				struct wfd_framebuffer_priv, base);
 	WFDErrorCode wfd_err;
-	struct dma_buf *dma_buf;
-	int ret = 0;
+	struct dma_buf *dma_bufs[DRM_FORMAT_MAX_PLANES] = {0};
+	int ret = 0, i = 0, num_planes = 0;
+
+	num_planes = fb->base.format->num_planes;
 
 	if (fb_priv->wfd_image)
 		return 0;
 
-	if (!fb->bo) {
-		pr_err("no bo attached to fb\n");
-		return -EINVAL;
-	}
+	for (i = 0; i < num_planes; i++) {
+		if (!fb->base.obj[i]) {
+			pr_err("no bo attached to fb\n");
+			return -EINVAL;
+		}
 
-	if (fb->bo->import_attach) {
-		dma_buf = fb->bo->import_attach->dmabuf;
-		get_dma_buf(dma_buf);
-	} else if (fb->bo->dma_buf) {
-		dma_buf = fb->bo->dma_buf;
-		get_dma_buf(dma_buf);
-	} else {
-		dma_buf = drm_gem_prime_export(fb->bo, 0);
-		if (IS_ERR(dma_buf)) {
-			pr_err("export dma_buf from bo failed\n");
-			return PTR_ERR(dma_buf);
+		if (fb->base.obj[i]->import_attach) {
+			dma_bufs[i] = fb->base.obj[i]->import_attach->dmabuf;
+			get_dma_buf(dma_bufs[i]);
+		} else if (fb->base.obj[i]->dma_buf) {
+			dma_bufs[i] = fb->base.obj[i]->dma_buf;
+			get_dma_buf(dma_bufs[i]);
+		} else {
+			dma_bufs[i] = drm_gem_prime_export(fb->base.obj[i], 0);
+			if (IS_ERR(dma_bufs[i]))
+				pr_err("export dma_buf from bo failed\n");
+				return PTR_ERR(dma_bufs[i]);
 		}
 	}
-
 	wfd_err = wfdCreateWFDEGLImagesPreAlloc_User(
 			fb_priv->wfd_device,
 			fb->base.width,
 			fb->base.height,
 			fb_priv->wfd_format,
 			fb_priv->wfd_usage,
-			1,
-			fb->bo->size,
+			num_planes,
+			fb->base.obj[0]->size,
 			&fb_priv->wfd_image,
-			(void **)&dma_buf,
+			(void **)&dma_bufs,
 			fb->base.pitches,
 			fb->base.offsets,
 			0x00);
@@ -568,8 +590,8 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 		pr_err("failed to create wfd image, err = %d\n", wfd_err);
 		ret = -EINVAL;
 	}
-
-	dma_buf_put(dma_buf);
+	for (i = 0; i < num_planes; i++)
+		dma_buf_put(dma_bufs[i]);
 
 	return ret;
 }
@@ -1709,3 +1731,7 @@ void wfd_kms_unregister(void)
 {
 	platform_driver_unregister(&wfd_kms_driver);
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif

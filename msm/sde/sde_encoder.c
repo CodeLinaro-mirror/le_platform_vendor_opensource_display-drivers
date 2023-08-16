@@ -47,6 +47,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_roi_misr_helper.h"
+#include "dp_drm.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -1040,7 +1041,7 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 
 		/* Reserve dynamic resources, indicating atomic_check phase */
 		ret = sde_rm_reserve(&sde_kms->rm, drm_enc, crtc_state,
-			conn_state, true);
+			conn_state);
 		if (ret) {
 			if (ret != -EAGAIN)
 				SDE_ERROR_ENC(sde_enc,
@@ -1968,7 +1969,7 @@ void sde_encoder_cancel_delayed_work(struct drm_encoder *encoder)
 static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
-	if (_sde_encoder_is_autorefresh_enabled(sde_enc))
+	if (!sde_enc->idle_pc_enabled || _sde_encoder_is_autorefresh_enabled(sde_enc))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
@@ -2459,6 +2460,7 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
 	struct sde_rm_hw_iter pp_iter, qdss_iter;
 	struct sde_rm_hw_iter dsc_iter, vdc_iter;
+	struct sde_rm_hw_iter lm_iter;
 	struct sde_rm_hw_request request_hw;
 	int i, j;
 
@@ -2483,6 +2485,14 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 				}
 			}
 		}
+	}
+
+	sde_rm_init_hw_iter(&lm_iter, drm_enc->base.id, SDE_HW_BLK_LM);
+	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+		sde_enc->hw_lm[i] = NULL;
+		if (!sde_rm_get_hw(&sde_kms->rm, &lm_iter))
+			break;
+		sde_enc->hw_lm[i] = (struct sde_hw_mixer *) lm_iter.hw;
 	}
 
 	sde_rm_init_hw_iter(&dsc_iter, drm_enc->base.id, SDE_HW_BLK_DSC);
@@ -2681,12 +2691,8 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	if (ret)
 		return;
 
-	/* reserve dynamic resources now, indicating non test-only */
-	ret = sde_rm_reserve(&sde_kms->rm, drm_enc, drm_enc->crtc->state, conn->state, false);
-	if (ret) {
-		SDE_ERROR_ENC(sde_enc, "failed to reserve hw resources, %d\n", ret);
-		return;
-	}
+	/* Rfresh dynamic resourece counter */
+	sde_rm_dec_resource_info(&sde_kms->rm);
 
 	/* assign the reserved HW blocks to this encoder */
 	_sde_encoder_virt_populate_hw_res(drm_enc);
@@ -3183,7 +3189,6 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
 	int i = 0;
 
 	_sde_encoder_control_fal10_veto(drm_enc, false);
@@ -3205,8 +3210,6 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
 
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
-
-	sde_rm_release(&sde_kms->rm, drm_enc, false);
 }
 
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
@@ -4865,10 +4868,11 @@ int sde_encoder_get_avr_status(struct drm_encoder *drm_enc)
 int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		struct drm_framebuffer *fb)
 {
+	struct sde_encoder_virt *sde_enc;
 	struct drm_encoder *drm_enc;
 	struct sde_hw_mixer_cfg mixer;
-	struct sde_rm_hw_iter lm_iter;
 	bool lm_valid = false;
+	int i;
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid encoder\n");
@@ -4882,12 +4886,12 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 	if (phys_enc->hw_ctl->ops.clear_all_blendstages)
 		phys_enc->hw_ctl->ops.clear_all_blendstages(phys_enc->hw_ctl);
 
-	sde_rm_init_hw_iter(&lm_iter, drm_enc->base.id, SDE_HW_BLK_LM);
-	while (sde_rm_get_hw(&phys_enc->sde_kms->rm, &lm_iter)) {
-		struct sde_hw_mixer *hw_lm = to_sde_hw_mixer(lm_iter.hw);
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	 for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+		struct sde_hw_mixer *hw_lm = sde_enc->hw_lm[i];
 
 		if (!hw_lm)
-			continue;
+			break;
 
 		/* need to flush LM to remove it */
 		if (phys_enc->hw_ctl->ops.update_bitmask_mixer)
@@ -5405,6 +5409,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	phys_params.parent_ops = parent_ops;
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
+	phys_params.num_of_splits =
+			disp_info->capabilities & MSM_DISPLAY_SPLIT_LINK ?
+			2 : disp_info->num_of_h_tiles;
 
 	SDE_DEBUG("\n");
 
@@ -5453,16 +5460,20 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		u32 controller_id = disp_info->h_tile_instance[i];
 
 		if (disp_info->num_of_h_tiles > 1) {
-			if (i == 0)
+			if (i == 0) {
 				phys_params.split_role = ENC_ROLE_MASTER;
-			else
+				phys_params.slave_idx = 0;
+			} else {
 				phys_params.split_role = ENC_ROLE_SLAVE;
+				phys_params.slave_idx  = i - 1;
+			}
 		} else {
 			phys_params.split_role = ENC_ROLE_SOLO;
 		}
 
-		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
-				i, controller_id, phys_params.split_role);
+		SDE_DEBUG("h_tile_instance %d = %d, split_role %d slave_idx %d\n",
+				i, controller_id, phys_params.split_role,
+				phys_params.slave_idx);
 
 		if (sde_enc->ops.phys_init) {
 			struct sde_encoder_phys *enc;
@@ -5497,6 +5508,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 			phys_params.intf_idx = sde_encoder_get_intf(
 					sde_kms->catalog, intf_type,
 					controller_id);
+
 			if (phys_params.intf_idx == INTF_MAX) {
 				SDE_ERROR_ENC(sde_enc,
 					"could not get wb: type %d, id %d\n",
@@ -5979,7 +5991,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	sde_enc->crtc = encoder->crtc;
 
 	ret = sde_rm_reserve(&sde_kms->rm, encoder, encoder->crtc->state,
-			conn->state, false);
+			conn->state);
 	if (ret) {
 		SDE_ERROR_ENC(sde_enc,
 			"failed to reserve hw resources, %d\n", ret);

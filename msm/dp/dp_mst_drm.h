@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_MST_DRM_H_
@@ -54,6 +54,13 @@ void dp_mst_deinit(struct dp_display *dp_display);
  * @display: Pointer to private display structure
  */
 void dp_mst_clear_edid_cache(void *dp_display);
+
+/**
+ * dp_mst_dump_topology - dump out current mst topology
+ * @display: Pointer to private display structure
+ * @m: Pointer to sequential file
+ */
+void dp_mst_dump_topology(struct dp_display *dp_display, struct seq_file *m);
 #else
 
 static inline int dp_mst_drm_bridge_init(void *display,
@@ -77,6 +84,11 @@ static inline int dp_mst_deinit(struct dp_display *dp_display)
 }
 
 static inline void dp_mst_clear_edid_cache(void *display)
+{
+}
+
+static inline void dp_mst_dump_topology(struct dp_display *dp_display,
+			struct seq_file *m)
 {
 }
 #endif /* CONFIG_DRM_MSM_DP_MST */
