@@ -27,16 +27,19 @@ scripts/headers_install.sh ${CURDIR}/include/uapi/display/drm/msm_drm_pp.h ${CUR
 scripts/headers_install.sh ${CURDIR}/include/uapi/display/drm/sde_drm.h ${CURDIR}/include/uapi/sde_drm.h
 scripts/headers_install.sh ${CURDIR}/include/uapi/display/media/mmm_color_fmt.h ${CURDIR}/include/uapi/mmm_color_fmt.h
 scripts/headers_install.sh ${CURDIR}/include/uapi/display/media/msm_sde_rotator.h ${CURDIR}/include/uapi/msm_sde_rotator.h
+scripts/headers_install.sh ${CURDIR}/include/uapi/display/umdp/umd_power.h ${CURDIR}/include/uapi/umd_power.h
 
 
 %install
 mkdir -p %{buildroot}%{_includedir}
 mkdir -p %{buildroot}%{_includedir}/drm
 mkdir -p %{buildroot}%{_includedir}/media
+mkdir -p %{buildroot}%{_includedir}/umdp
 cp include/uapi/display/drm/msm_drm_pp.h %{buildroot}%{_includedir}/drm
 cp include/uapi/display/drm/sde_drm.h %{buildroot}%{_includedir}/drm
 cp include/uapi/display/media/mmm_color_fmt.h %{buildroot}%{_includedir}/media
 cp include/uapi/display/media/msm_sde_rotator.h %{buildroot}%{_includedir}/media
+cp include/uapi/display/umdp/umd_power.h %{buildroot}%{_includedir}/umdp
 
 
 %files
@@ -44,3 +47,4 @@ cp include/uapi/display/media/msm_sde_rotator.h %{buildroot}%{_includedir}/media
 %{_includedir}/drm/sde_drm.h
 %{_includedir}/media/mmm_color_fmt.h
 %{_includedir}/media/msm_sde_rotator.h
+%{_includedir}/umdp/umd_power.h
