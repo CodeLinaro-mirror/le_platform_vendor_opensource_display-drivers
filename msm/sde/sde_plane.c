@@ -3608,6 +3608,31 @@ static int _sde_plane_validate_shared_crtc(struct sde_plane *psde,
 
 }
 
+static bool is_valid_yuv(const struct sde_format* fmt,
+		const struct sde_rect* src)
+{
+	bool ret = true;
+
+	switch (fmt->chroma_sample) {
+	case SDE_CHROMA_420:
+		if ((src->x & 0x1) || (src->y & 0x1) ||(src->w & 0x1) || (src->h & 0x1))
+			ret = false;
+		break;
+	case SDE_CHROMA_H2V1:
+		if ((src->x & 0x1) || (src->w & 0x1))
+			ret = false;
+		break;
+	case SDE_CHROMA_H1V2:
+		if ((src->y & 0x1) || (src->h & 0x1))
+			ret = false;
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 static int sde_plane_sspp_atomic_check(struct drm_plane *plane,
 		struct drm_plane_state *state)
 {
@@ -3695,8 +3720,7 @@ static int sde_plane_sspp_atomic_check(struct drm_plane *plane,
 		ret = -E2BIG;
 
 	/* valid yuv image */
-	} else if (SDE_FORMAT_IS_YUV(fmt) && ((src.x & 0x1) || (src.y & 0x1) ||
-			 (src.w & 0x1) || (src.h & 0x1))) {
+	} else if (SDE_FORMAT_IS_YUV(fmt) && !is_valid_yuv(fmt, &src)) {
 		SDE_ERROR_PLANE(psde, "invalid yuv source %u, %u, %ux%u\n",
 				src.x, src.y, src.w, src.h);
 		ret = -EINVAL;
