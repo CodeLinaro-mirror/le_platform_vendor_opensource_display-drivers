@@ -25,6 +25,11 @@ include $(DISPLAY_ROOT)/config/gvmdisp.conf
 LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/gvmdispconf.h
 endif
 
+ifeq (y, $(findstring y, $(CONFIG_VFIO)))
+include $(DISPLAY_ROOT)/config/umd_mm.conf
+endif
+
 obj-$(CONFIG_DRM_MSM) += msm/
 obj-$(CONFIG_DRM_MSM_HYP) += msm-hyp/
 obj-$(CONFIG_DRM_MSM_CFG) += msm-cfg/
+obj-$(CONFIG_UMD_MM) += umd-mm/

@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+header-y += umd_power.h
+
