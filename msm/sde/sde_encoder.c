@@ -712,6 +712,27 @@ int sde_encoder_helper_unregister_irq(struct sde_encoder_phys *phys_enc,
 	return 0;
 }
 
+int sde_encoder_update_info(struct drm_encoder *drm_enc,
+		struct drm_connector *drm_conn)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	int ret = 0;
+
+	ret = sde_connector_get_info(drm_conn, &sde_enc->disp_info);
+	if (ret) {
+		SDE_ERROR_ENC(sde_enc, "failed to get disp info, rc = %d\n", ret);
+	}
+
+	return ret;
+}
+
+u32 sde_encoder_get_display_type(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc ? sde_enc->disp_info.display_type : 0;
+}
+
 void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 		struct sde_encoder_hw_resources *hw_res,
 		struct drm_connector_state *conn_state)

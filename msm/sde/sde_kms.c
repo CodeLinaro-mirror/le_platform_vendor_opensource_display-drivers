@@ -1611,6 +1611,12 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 		}
 
+		/* dp dts parse is in connector post_init, so update display info
+		 * from dts to encoder
+		 */
+		if (info.display_type == SDE_CONNECTOR_UNDEFINED)
+			sde_encoder_update_info(encoder, connector);
+
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 		dp_stream_count = dp_display_get_num_of_streams(display);
