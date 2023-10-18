@@ -983,7 +983,7 @@ retry:
 				 * Need catch the system frame buffer to debug.
 				 * Normally, 100us is enough for the reply.
 				 */
-				panic("wfdDeviceCommit");
+				WIRE_LOG_ERROR("wfdDeviceCommit");
 			} else {
 				/* Add this msleep to let watch dog thread can be feed */
 				msleep(1);
