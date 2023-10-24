@@ -165,7 +165,7 @@ static int umd_clock_enable_level_default(struct device *dev, const char *clk_na
 		rc = clk_set_rate(clk, clk_rate_L0);
 
 		if (rc) {
-			pr_err("%s set rate failed\n", clk_name);
+			pr_err("%s set rate %d failed\n", clk_name, clk_rate_L0);
 			return rc;
 		}
 	}
@@ -195,13 +195,14 @@ static int umd_regulator_enable_level_default(struct device *dev, const char *rg
 	if (regulator_count_voltages(rgltr) > 0) {
 		rc = regulator_set_voltage(rgltr, rgltr_min_volt, rgltr_max_volt);
 		if (rc) {
-			pr_err("%s set voltage failed\n", rgltr_name);
+			pr_err("%s set voltage[%d,%d] failed\n", rgltr_name, rgltr_min_volt,
+								rgltr_max_volt);
 			return rc;
 		}
 
 		rc = regulator_set_load(rgltr, rgltr_load);
 		if (rc) {
-			pr_err("%s set load failed\n", rgltr_name);
+			pr_err("%s set load %d failed\n", rgltr_name, rgltr_load);
 			return rc;
 		}
 	}
@@ -423,7 +424,7 @@ static int umd_power_probe(struct platform_device *pdev)
 		ret = umd_power_parse_dt(pdev, umdp_ctrl);
 		if (ret) {
 			pr_err("%s device tree parsing failed\n", dev_name(&pdev->dev));
-			return 0;
+			return ret;
 		}
 		return ret;
 	}
