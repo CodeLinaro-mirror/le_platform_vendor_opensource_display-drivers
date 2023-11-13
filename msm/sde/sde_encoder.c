@@ -4288,6 +4288,16 @@ static void sde_encoder_frame_done_callback(
 				sde_enc->crtc_frame_event_cb(
 					&sde_enc->crtc_frame_event_cb_data,
 					event);
+
+		/* One of the physical encoders has become idle */
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			if (sde_enc->phys_encs[i] == ready_phys) {
+				clear_bit(i, sde_enc->frame_busy_mask);
+				SDE_EVT32_VERBOSE(DRMID(drm_enc), i,
+					sde_enc->frame_busy_mask[0]);
+			}
+		}
+
 		return;
 	}
 
