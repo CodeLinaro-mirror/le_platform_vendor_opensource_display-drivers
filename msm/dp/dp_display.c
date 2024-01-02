@@ -1917,9 +1917,6 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 		return 0;
 	}
 
-	if (dp->debug->psm_enabled && dp_display_state_is(DP_STATE_READY))
-		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
-
 	dp_display_disconnect_sync(dp);
 
 	if (!dp->parser->force_connect_mode) {
@@ -4467,6 +4464,9 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp = dev_get_drvdata(dev);
 
+	if (!dp->dp_display.base_connector)
+		return 0;
+
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
 	dp_display_set_mst_state(&dp->dp_display, PM_SUSPEND);
@@ -4532,6 +4532,9 @@ static void dp_pm_complete(struct device *dev)
 		return;
 
 	dp = dev_get_drvdata(dev);
+
+	if (!dp->dp_display.base_connector)
+		return;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
