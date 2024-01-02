@@ -221,6 +221,11 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->link_training_min_plevel = 0;
 
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-retries", &parser->link_training_retries);
+	if (rc)
+		parser->link_training_retries = MAX_DP_LINK_TRAINING_RETRIES;
+
 	return 0;
 }
 
@@ -1075,7 +1080,7 @@ static int dp_parser_bond(struct dp_parser *parser)
 
 static u16 swap_u16_endianness(u16 in)
 {
-	return ((*(((char *)&in)) << 8) | (*(((char *)&in)+1)));
+	return (((u16)((in | 0x00FF) << 8)) | ((u16)((in | 0xFF00) >> 8)));
 }
 
 static u16 read_u16_from_byte_stream(const char *data, size_t *offset)
