@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/habmm.h>
@@ -13,6 +13,7 @@
 #include <linux/atomic.h>
 #include <linux/kthread.h>
 #include <linux/ktime.h>
+#include <uapi/linux/sched/types.h>
 #include "msm_hyp_trace.h"
 #include "wire_user.h"
 #include "wire_format.h"
