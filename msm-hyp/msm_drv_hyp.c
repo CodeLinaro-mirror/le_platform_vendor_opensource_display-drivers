@@ -2219,7 +2219,7 @@ static int _msm_hyp_hw_init(struct drm_device *ddev)
 
 	ddev->mode_config.funcs = &msm_hyp_mode_config_funcs;
 
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 16, 0))
 	ddev->mode_config.allow_fb_modifiers = true;
 #endif
 	drm_mode_config_reset(ddev);
