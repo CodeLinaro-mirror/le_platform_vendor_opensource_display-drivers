@@ -24,8 +24,10 @@
 #define MAX_VERT_DECIMATION    4
 #define SSPP_UNITY_SCALE       1
 #define MAX_NUM_LIMIT_PAIRS    16
-#define MAX_MDP_CLK_KHZ        412500
 #define DBG_BUF_COUNT          50
+#define DEFAULT_MAX_MDP_CLK    575
+#define MAX_LAYERS_MULTIPIPE   4
+#define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT   1088
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
@@ -35,6 +37,25 @@
 	for (int idx = (start); idx < (end); idx++) {				\
 		DRM_DEBUG_KMS("virtio: framebuffer data %x\n", ptr[idx]);	\
 	}
+
+#ifndef UINT_MAX
+#define UINT_MAX 0xffffffffU  /* define this if limits.h not available */
+#endif
+
+#define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
+	do {                                            \
+		(rect)->x = (Q16_flag) ? (a) >> 16 : (a);    \
+		(rect)->y = (Q16_flag) ? (b) >> 16 : (b);    \
+		(rect)->w = (Q16_flag) ? (c) >> 16 : (c);    \
+		(rect)->h = (Q16_flag) ? (d) >> 16 : (d);    \
+	} while (0)
+
+struct virtio_kms_rect {
+	u16 x;
+	u16 y;
+	u16 w;
+	u16 h;
+};
 
 struct limit_val_pair {
 	const char *str;
@@ -599,7 +620,7 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 	struct virtio_connector_info_priv *priv;
 	struct virtio_display_modes *info;
 	struct drm_display_mode *mode;
-	struct scanout_sttrib *attr;
+	struct scanout_attrib *attr;
 
 	if (!connector_infos) {
 		*connector_num = kms->num_scanouts;
@@ -631,6 +652,7 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 					priv->panel_name);
 		priv->base.display_info.width_mm = attr->width_mm;
 		priv->base.display_info.height_mm = attr->height_mm;
+		priv->base.panel_orientation = attr->panel_orientation;
 		priv->scanout = i;
 		priv->base.possible_crtcs = 1 << i;
 		if (!kms->outputs[i].num_modes) {
@@ -969,6 +991,11 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		prop.mask |= BLEND_MODE;
 	}
 
+	if (old_state->rotation != plane->state->rotation || !plane_priv->committed) {
+		prop.rotation = plane->state->rotation;
+		prop.mask |= ROTATION;
+	}
+
 	if (virtio_kms_plane_is_csc_matrix_changed(old_pstate, new_pstate, &prop.color_space)) {
 		prop.mask |= COLOR_SPACE;
 	}
@@ -984,8 +1011,96 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 	plane_priv->committed = true;
 }
 
+static bool virtio_kms_plane_enabled(const struct drm_plane_state *state)
+{
+	return state && state->fb && state->crtc;
+}
+
+static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
+		struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	struct drm_plane *slave_plane = NULL;
+	struct msm_hyp_plane *slave_hyp_plane = NULL;
+	u32 rotation = 0;
+	int ret = 0;
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+
+	/* check inline rotation and simplify the transform */
+	rotation = drm_rotation_simplify(
+					state->rotation,
+					DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_90 |
+					DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y);
+
+	if ((rotation & DRM_MODE_ROTATE_180) || (rotation & DRM_MODE_ROTATE_270)) {
+		pr_err("invalid rotation transform must be simplified 0x%x\n",
+			rotation);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (rotation & DRM_MODE_ROTATE_90) {
+		struct virtio_kms_rect src;
+		bool q16_data = true;
+		/* check if the slave pipline is using */
+		drm_for_each_plane(slave_plane, plane->dev) {
+			slave_hyp_plane = to_msm_hyp_plane(slave_plane);
+
+			if ((plane == slave_hyp_plane->primary_plane)
+				&& virtio_kms_plane_enabled(slave_plane->state)) {
+				pr_err("slave plane %d is using, master plane %d can not do 90 rotation\n",
+					slave_plane->base.id, plane->base.id);
+				goto exit;
+			}
+		}
+
+		POPULATE_RECT(&src, state->src_x, state->src_y,
+			state->src_w, state->src_h, q16_data);
+
+		/* check for valid height */
+		if (src.h > MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT) {
+			pr_err("invalid height for inline rot:%d max:%d\n",
+				src.h, MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT);
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		/* check for valid formats supported by inline rot */
+		//TODO, get this information from QNX
+	}
+
+	state->rotation = rotation;
+exit:
+	return ret;
+}
+
+static int virtio_kms_plane_atomic_check(struct drm_plane *plane,
+	struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	int ret = 0;
+
+	if (!plane || !atomic_state) {
+		pr_err("invalid arg(s), plane %d atomic_state %d\n",
+			!plane, !atomic_state);
+		return -EINVAL;
+	}
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+	if (!virtio_kms_plane_enabled(state))
+		goto exit;
+
+	ret = _virtio_kms_plane_rot_atomic_check(plane, atomic_state);
+	if (ret)
+		goto exit;
+exit:
+	return ret;
+}
+
 static const struct drm_plane_helper_funcs virtio_plane_helper_funcs = {
 	.atomic_update = virtio_kms_plane_atomic_update,
+	.atomic_check = virtio_kms_plane_atomic_check,
 };
 
 static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
@@ -1001,6 +1116,7 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 	uint32_t num_formats = 0;
 	uint32_t plane_type;
 	int32_t master_idx = -1;
+	bool support_rotation = false;
 
 	if (!kms || !plane_num)
 		return -EINVAL;
@@ -1029,6 +1145,8 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 			priv->plane_type = plane_type;
 			priv->base.plane_type = plane_type;
 			priv->scanout = i;
+			support_rotation = kms->outputs[i].plane_caps[j].support_rotation;
+			priv->base.support_rotation = support_rotation;
 			num_formats = kms->outputs[i].plane_caps[j].num_formats;
 			formats = kms->outputs[i].plane_caps[j].formats;
 
@@ -1120,20 +1238,19 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 	struct limit_val_pair *pair;
 	char buf[16];
 	int i;
-/*
+
 	for (i = 0; i < ARRAY_SIZE(constraints_table); i++) {
 		if (constraints_table[i].sdma_width == kms->max_sdma_width) {
 			constraints = &constraints_table[i];
 			break;
 		}
 	}
-*/
-	//TODO: Fix the sdma_width for getting the right constraint table index
-	pr_err("virtio : _virtio_kms_set_crtc_limit %d\n",  kms->max_sdma_width);
-	constraints = &constraints_table[2];
+
+	pr_debug("virtio : max_sdma_width: %d\n",  kms->max_sdma_width);
 	if (!constraints)
 		return;
 
+	pr_debug("virtio : set crtc limit\n");
 	for (i = 0; i < MAX_NUM_LIMIT_PAIRS; i++) {
 		pair = &constraints->pairs[i];
 
@@ -1146,6 +1263,34 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 	}
 
 	crtc_priv->base.extra_caps = crtc_priv->extra_info.data;
+}
+
+uint32_t drm_calc_max_mdp_clk(struct msm_hyp_kms *hyp_kms)
+{
+	uint32_t tmp_max_mdp_clk = 0;
+	uint64_t magnification_times = 1;
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+
+	if (!kms)
+		return 0;
+
+	/* take MAX_LAYERS_MULTIPIPE * max_mdp_clk as max mdp clk to bypass sdm strategy manager */
+	/* when max_sdma_width is not set*/
+	if (!kms->max_sdma_width)
+		magnification_times = MAX_LAYERS_MULTIPIPE;
+
+	if (kms->device_info.max_mdp_clk)
+		tmp_max_mdp_clk = kms->device_info.max_mdp_clk;
+	else
+		tmp_max_mdp_clk = DEFAULT_MAX_MDP_CLK;
+
+	if (UINT_MAX < (uint64_t)tmp_max_mdp_clk  * magnification_times * 1000000) {
+		pr_err("max_mdp_clk overflow\n");
+		tmp_max_mdp_clk = 0;
+	} else
+		tmp_max_mdp_clk = tmp_max_mdp_clk  * magnification_times * 1000000;
+
+	return tmp_max_mdp_clk;
 }
 
 static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
@@ -1180,8 +1325,16 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 		priv->base.primary_plane_index = plane_cnt;
 		plane_cnt += kms->outputs[i].plane_cnt;
 
-		/* these values should read from host */
-		priv->base.max_mdp_clk = 412500000LL;
+		priv->base.max_mdp_clk = drm_calc_max_mdp_clk(hyp_kms);
+		if (!priv->base.max_mdp_clk) {
+			pr_err("virtio : calc max mdp clk failed\n");
+			kfree(priv);
+			return -ENOMEM;
+		}
+
+		pr_debug("virtio set crtc limit max_mdp_clk: %u\n", priv->base.max_mdp_clk);
+
+		//TODO these attributes need be set as kms->device_info which got from host
 		priv->base.qseed_type = "qseed3";
 		priv->base.smart_dma_rev = "smart_dma_v2p5";
 		priv->base.has_hdr = false;
@@ -1200,7 +1353,25 @@ static int virtio_kms_get_mode_info(struct msm_hyp_kms *kms,
 		const struct drm_display_mode *mode,
 		struct msm_hyp_mode_info *modeinfo)
 {
-	modeinfo->num_lm = (mode->clock > MAX_MDP_CLK_KHZ) ? 2 : 1;
+	uint32_t max_mdp_clk;
+
+	if (!kms || !mode || !modeinfo)
+		return -EINVAL;
+
+	max_mdp_clk = ((struct virtio_kms *)kms)->device_info.max_mdp_clk * 1000;
+	if (!max_mdp_clk)
+		max_mdp_clk = DEFAULT_MAX_MDP_CLK * 1000;
+
+	/*refine topology to avoid sdm check display pixel clk failure*/
+	if (mode->clock <= max_mdp_clk)
+		modeinfo->num_lm = 1;
+	else if (mode->clock / 2 > max_mdp_clk)
+		modeinfo->num_lm = 4;
+	else
+		modeinfo->num_lm = 2;
+
+	pr_debug("virtio modeinfo->num_lm %d\n", modeinfo->num_lm);
+
 	modeinfo->num_enc = 0;
 	modeinfo->num_intf = 1;
 
@@ -1719,6 +1890,12 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	spin_lock_init(&kms->display_info_lock);
 
 	//virtio_kms_get_capsets(kms, kms->num_capsets);
+
+	rc = virtio_gpu_cmd_get_device_info(kms);
+	if (rc) {
+		pr_err("get_device_info failed\n");
+		goto error;
+	}
 
 	rc = virtio_gpu_cmd_get_display_info(kms);
 	if (rc) {

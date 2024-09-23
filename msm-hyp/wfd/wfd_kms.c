@@ -343,8 +343,6 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 					port_id, connector->name,
 					connector->status,
 					priv->wfd_port);
-			priv->connector_status = connector_status_connected;
-			connector->status = connector_status_connected;
 			priv->base.possible_crtcs = 1 << port_idx;
 			wfdGetPortAttribiv_User(priv->wfd_device,
 				priv->wfd_port,
@@ -371,6 +369,10 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 				priv->wfd_port, port_mode,
 				num_mode);
 			if (num_mode > 0) {
+				if (priv->modes) {
+					pr_debug("HPDLOG free old priv->modes\n");
+					kfree(priv->modes);
+				}
 				priv->modes = kcalloc(num_mode,
 					sizeof(struct drm_display_mode),
 					GFP_KERNEL);
@@ -416,6 +418,8 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 						mode->vdisplay, mode->clock,
 						priv->port_modes[m], mode->name);
 			}
+			priv->connector_status = connector_status_connected;
+			connector->status = connector_status_connected;
 			msm_hyp_send_hpd_event(dev, connector);
 		}
 		/* Handle HPD disconnect event*/
@@ -791,6 +795,9 @@ bool _wfd_kms_dma_igc_changed(
 	if (!changed)
 		return false;
 
+	if (!dma_config)
+		return false;
+
 	dma_config->bIGCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
 
 	if (dma_config && cur_en)
@@ -818,6 +825,9 @@ bool _wfd_kms_dma_gc_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!dma_config)
 		return false;
 
 	dma_config->bGCEnabled= cur_en ? WFD_TRUE : WFD_FALSE;
@@ -849,6 +859,9 @@ bool _wfd_kms_plane_is_3d_gamut_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!gamut)
 		return false;
 
 	gamut->bGamutEn = cur_en ? WFD_TRUE : WFD_FALSE;
@@ -919,6 +932,9 @@ bool _wfd_kms_plane_is_dma_csc_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!dma_config)
 		return false;
 
 	dma_config->bCSCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
@@ -1771,7 +1787,8 @@ static int wfd_kms_convert_hsic(u32 input, u32 hsic_type)
 	return out_val;
 }
 
-static void wfd_kms_crtc_atomic_begin(struct drm_crtc *crtc,
+static void wfd_kms_crtc_atomic_begin(struct msm_hyp_kms *kms,
+		struct drm_crtc *crtc,
 		struct drm_atomic_state *atomic_state)
 {
 	struct msm_hyp_crtc *c = to_msm_hyp_crtc(crtc);
@@ -1829,10 +1846,6 @@ static void wfd_kms_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 }
 
-static struct drm_crtc_helper_funcs wfd_crtc_helper_funcs = {
-	.atomic_begin = wfd_kms_crtc_atomic_begin,
-};
-
 static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		struct msm_hyp_crtc_info **crtc_infos,
 		int *crtc_num)
@@ -1884,7 +1897,6 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 
 		_wfd_kms_set_crtc_limit(wfd_kms, priv);
 
-		priv->base.crtc_funcs = &wfd_crtc_helper_funcs;
 		crtc_infos[i] = &priv->base;
 	}
 
@@ -2677,6 +2689,7 @@ static const struct msm_hyp_kms_funcs wfd_kms_funcs = {
 	.disable_vblank = wfd_kms_disable_vblank,
 	.free_connector_port_modes = wfd_kms_free_connector_port_modes,
 	.register_event = wfd_kms_register_event,
+	.crtc_atomic_begin = wfd_kms_crtc_atomic_begin,
 };
 
 static int wfd_kms_bind(struct device *dev, struct device *master,
@@ -2748,15 +2761,14 @@ static int wfd_kms_remove(struct platform_device *pdev)
 	int buff_idx = 0;
 	struct wire_device *wire_dev = NULL;
 	dma_addr_t *dmabuf_handle = NULL;
-	int export_id;
+	int export_id = 0;
 	void *handle = NULL;
 	struct user_os_utils_mem_info mem = { 0 };
 
 	for (i = 0; i < kms->port_cnt; i++) {
 		for (j = 0; j < kms->pipeline_cnt[i]; j++) {
 			wire_dev = kms->port_devs[i];
-			if (wire_dev)
-				handle = wire_dev->ctx->init_info.context;
+			handle = wire_dev->ctx->init_info.context;
 			wfdSetPipelineAttribiv_User(kms->port_devs[i],kms->pipelines[i][j],
 				WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
 			wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);

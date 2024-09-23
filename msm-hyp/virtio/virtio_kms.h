@@ -22,11 +22,12 @@ enum virtio_channel_ids {
 	CHANNEL_EVENTS,
 	MAX_CHANNELS
 };
-struct scanout_sttrib {
+struct scanout_attrib {
 	uint32_t type;
 	uint32_t connection_status;
 	uint32_t width_mm;
 	uint32_t height_mm;
+	uint32_t panel_orientation;
 };
 
 struct virtio_plane_caps {
@@ -41,6 +42,7 @@ struct virtio_plane_caps {
 	uint32_t zorder;
 	uint32_t pair_plane_id;
 	int32_t  master_plane_id;
+	uint32_t support_rotation;
 };
 
 struct virtio_display_modes {
@@ -53,7 +55,7 @@ struct virtio_kms_output {
 	int index;
 	struct virtio_display_modes info[VIRTIO_GPU_MAX_MODES]; //modes
 	uint32_t num_modes;
-	struct scanout_sttrib attr;
+	struct scanout_attrib attr;
 	bool enabled;
 	uint32_t type;
 	struct edid *edid;
@@ -69,6 +71,12 @@ struct channel_map {
 	struct mutex hyp_chl_lock[MAX_CHANNELS];
 };
 
+struct device_info_type {
+	uint32_t qseed_type;
+	uint32_t max_mdp_clk;
+	uint32_t has_src_split;
+	uint32_t device_version;
+};
 struct virtio_kms {
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
@@ -76,8 +84,8 @@ struct virtio_kms {
 	uint32_t mmid_buffer;
 	uint32_t mmid_event;
 	bool stop;
-        struct drm_device *dev;
-        uint32_t client_id;
+	struct drm_device *dev;
+	uint32_t client_id;
 	struct virtio_device *vdev;
 	wait_queue_head_t resp_wq;
 	uint32_t max_sdma_width;
@@ -91,6 +99,7 @@ struct virtio_kms {
 	uint32_t num_scanouts;
 	struct virtio_kms_output outputs[VIRTIO_GPU_MAX_SCANOUTS];
 	bool has_edid;
+	struct device_info_type device_info;
 };
 
 struct virtio_mem_info {
