@@ -1982,16 +1982,21 @@ static int virtio_kms_probe(struct platform_device *pdev)
 //	if (ret)
 //		return ret;
 
+#ifndef HEADLESS_VM
 	ret = virtio_gpu_hab_open(kms);
 	if (ret)
 		return ret;
+#endif
 
 	kms->stop = false;
+
+#ifndef HEADLESS_VM
 	kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
 
         ret = _virtio_kms_hw_init(kms);
         if (ret)
                 return ret;
+#endif
 
 	pr_debug("numbr of scanouts %d for client %x\n", kms->num_scanouts, kms->client_id);
         kms->base.funcs = &virtio_kms_funcs;

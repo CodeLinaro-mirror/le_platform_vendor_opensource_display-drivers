@@ -2509,11 +2509,13 @@ static int _msm_hyp_hw_init(struct drm_device *ddev)
 		goto fail;
 	}
 
+#ifndef HEADLESS_VM
 	ret = _msm_hyp_obj_init(ddev);
 	if (ret) {
 		DRM_ERROR("drm_connector_init_fe - failed\n");
 		goto fail;
 	}
+#endif
 
 	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
 

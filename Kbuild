@@ -5,13 +5,17 @@ DISPLAY_ROOT=$(srctree)/techpack/display
 endif
 
 ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_ARCH_SA8195)))
+ifneq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
 	include $(DISPLAY_ROOT)/config/augen3disp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif
+endif
 
 ifeq (y, $(findstring y, $(CONFIG_ARCH_LEMANS)))
+ifneq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
 	include $(DISPLAY_ROOT)/config/augen4disp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen4dispconf.h
+endif
 endif
 
 LINUXINCLUDE    += \
@@ -20,7 +24,7 @@ LINUXINCLUDE    += \
 		   -I$(DISPLAY_ROOT)/include/linux
 USERINCLUDE     += -I$(DISPLAY_ROOT)/include/uapi/display
 
-ifeq (y, $(findstring y, $(CONFIG_QTI_QUIN_GVM)))
+ifeq (y, $(findstring y, $(CONFIG_QTI_QUIN_GVM) $(CONFIG_ARCH_QTI_VM)))
 include $(DISPLAY_ROOT)/config/gvmdisp.conf
 LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/gvmdispconf.h
 endif
