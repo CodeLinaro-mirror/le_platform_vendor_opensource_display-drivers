@@ -2541,12 +2541,14 @@ static void msm_hyp_postclose(struct drm_device *dev, struct drm_file *file)
 
 static void msm_hyp_lastclose(struct drm_device *dev)
 {
+#ifndef HEADLESS_VM
 	struct msm_hyp_drm_private *priv = dev->dev_private;
 	int ret;
 
 	ret = drm_client_modeset_commit_locked(&priv->client);
 	if (ret)
 		DRM_ERROR("client modeset commit failed: %d\n", ret);
+#endif
 }
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)

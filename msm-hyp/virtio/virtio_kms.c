@@ -2018,6 +2018,7 @@ static int virtio_kms_probe(struct platform_device *pdev)
 static int virtio_kms_remove(struct platform_device *pdev)
 {
 	//TODO: implement remove
+#ifndef HEADLESS_VM
 	int ret;
 	struct virtio_kms *kms = platform_get_drvdata(pdev);
 
@@ -2025,6 +2026,7 @@ static int virtio_kms_remove(struct platform_device *pdev)
 	if (ret) {
 		pr_err("deinit failed \n");
 	}
+#endif
 	return 0;
 }
 
