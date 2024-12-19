@@ -449,10 +449,10 @@ static const u32 sde_hw_rotator_v5_inpixfmts[] = {
 	/* SDE_PIX_FMT_YCBYCR_H2V1, */
 	SDE_PIX_FMT_Y_CBCR_H2V2_VENUS,
 	SDE_PIX_FMT_Y_CRCB_H2V2_VENUS,
-	/* SDE_PIX_FMT_RGBA_8888_UBWC, */
+	SDE_PIX_FMT_RGBA_8888_UBWC,
 	/* SDE_PIX_FMT_RGBX_8888_UBWC, */
-	/* SDE_PIX_FMT_RGB_565_UBWC, */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_UBWC, */
+	SDE_PIX_FMT_RGB_565_UBWC,
+	SDE_PIX_FMT_Y_CBCR_H2V2_UBWC,
 	SDE_PIX_FMT_RGBA_1010102,
 	SDE_PIX_FMT_RGBX_1010102,
 	SDE_PIX_FMT_ARGB_2101010,
@@ -466,8 +466,8 @@ static const u32 sde_hw_rotator_v5_inpixfmts[] = {
 	SDE_PIX_FMT_Y_CBCR_H2V2_P010,
 	SDE_PIX_FMT_Y_CBCR_H2V2_P010_VENUS,
 	/* SDE_PIX_FMT_Y_CBCR_H2V2_TP10 */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_TP10_UBWC, */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_P010_UBWC, */
+	SDE_PIX_FMT_Y_CBCR_H2V2_TP10_UBWC,
+	SDE_PIX_FMT_Y_CBCR_H2V2_P010_UBWC,
 
 	/* SDE_PIX_FMT_Y_CBCR_H2V2_P010_TILE,
 	SDE_PIX_FMT_Y_CBCR_H2V2_TILE,
@@ -1392,7 +1392,12 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 
 	if (dbgbuf->dmabuf && (dbgbuf->buflen > 0)) {
 		dma_buf_begin_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);
+
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+		dma_buf_vmap_unlocked(dbgbuf->dmabuf, &map);
+#else
 		dma_buf_vmap(dbgbuf->dmabuf, &map);
+#endif
 		dbgbuf->vaddr = map.vaddr;
 		SDEROT_DBG("vaddr mapping: 0x%pK/%ld w:%d/h:%d\n",
 				dbgbuf->vaddr, dbgbuf->buflen,
@@ -1407,7 +1412,12 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 static void sde_hw_rotator_unmap_vaddr(struct sde_dbg_buf *dbgbuf)
 {
 	if (dbgbuf->vaddr) {
-		dma_buf_vunmap(dbgbuf->dmabuf, dbgbuf->vaddr);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			dma_buf_vunmap_unlocked(dbgbuf->dmabuf, dbgbuf->vaddr);
+#else
+			dma_buf_vunmap(dbgbuf->dmabuf, dbgbuf->vaddr);
+#endif
+
 		dma_buf_end_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);
 	}
 
@@ -2681,8 +2691,14 @@ static int sde_hw_rotator_swts_create(struct sde_hw_rotator *rot)
 		goto err_put;
 	}
 
+
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	data->srcp_table = dma_buf_map_attachment_unlocked(data->srcp_attachment,
+                         DMA_BIDIRECTIONAL);
+#else
 	data->srcp_table = dma_buf_map_attachment(data->srcp_attachment,
 			DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR_OR_NULL(data->srcp_table)) {
 		SDEROT_ERR("dma_buf_map_attachment error\n");
 		rc = -ENOMEM;
@@ -2705,8 +2721,13 @@ static int sde_hw_rotator_swts_create(struct sde_hw_rotator *rot)
 
 	return rc;
 err_unmap:
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(data->srcp_attachment, data->srcp_table,
+			DMA_FROM_DEVICE);
+#else
 	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
 			DMA_FROM_DEVICE);
+#endif
 err_detach:
 	dma_buf_detach(data->srcp_dma_buf, data->srcp_attachment);
 err_put:
@@ -2728,8 +2749,15 @@ static void sde_hw_rotator_swts_destroy(struct sde_hw_rotator *rot)
 
 	sde_smmu_unmap_dma_buf(data->srcp_table, SDE_IOMMU_DOMAIN_ROT_UNSECURE,
 			DMA_FROM_DEVICE, data->srcp_dma_buf);
+
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(data->srcp_attachment, data->srcp_table,
+				DMA_FROM_DEVICE);
+#else
 	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
-			DMA_FROM_DEVICE);
+				DMA_FROM_DEVICE);
+#endif
+
 	dma_buf_detach(data->srcp_dma_buf, data->srcp_attachment);
 	dma_buf_put(data->srcp_dma_buf);
 	data->addr = 0;
@@ -3710,13 +3738,13 @@ static int sde_rotator_hw_rev_init(struct sde_hw_rotator *rot)
 		set_bit(SDE_CAPS_PARTIALWR,  mdata->sde_caps_map);
 		set_bit(SDE_CAPS_HW_TIMESTAMP, mdata->sde_caps_map);
 		rot->inpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
-				sde_hw_rotator_v4_inpixfmts;
+				sde_hw_rotator_v5_inpixfmts;
 		rot->num_inpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
-				ARRAY_SIZE(sde_hw_rotator_v4_inpixfmts);
+				ARRAY_SIZE(sde_hw_rotator_v5_inpixfmts);
 		rot->outpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
-				sde_hw_rotator_v4_outpixfmts;
+				sde_hw_rotator_v5_outpixfmts;
 		rot->num_outpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
-				ARRAY_SIZE(sde_hw_rotator_v4_outpixfmts);
+				ARRAY_SIZE(sde_hw_rotator_v5_outpixfmts);
 		rot->downscale_caps =
 			"LINEAR/1.5/2/4/8/16/32/64 TILE/1.5/2/4 TP10/1.5/2";
         } else {
