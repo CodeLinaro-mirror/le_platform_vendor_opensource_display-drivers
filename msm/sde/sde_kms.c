@@ -4081,6 +4081,19 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	kthread_flush_worker(&priv->pp_event_worker);
 }
 
+static void _sde_kms_pm_suspend_wait_for_commit_done(struct sde_kms *sde_kms,
+	struct device *dev)
+{
+	int i;
+	struct msm_drm_private *priv = sde_kms->dev->dev_private;
+
+	for (i = 0; i < priv->num_crtcs; i++) {
+		if (priv->disp_thread[i].thread)
+			kthread_flush_worker(
+				&priv->disp_thread[i].worker);
+	}
+}
+
 struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state;
@@ -4130,6 +4143,7 @@ retry:
 	if (ret)
 		goto unlock;
 
+	_sde_kms_pm_suspend_wait_for_commit_done(sde_kms, dev);
 	/* save current state for resume */
 	if (sde_kms->suspend_state)
 		drm_atomic_state_put(sde_kms->suspend_state);
