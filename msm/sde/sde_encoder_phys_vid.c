@@ -1001,6 +1001,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	struct sde_hw_ctl *hw_ctl;
 	u32 flush_register = 0xebad;
 	bool timeout = false;
+	bool is_skip = false;
 
 	if (!phys_enc || !phys_enc->hw_ctl) {
 		pr_err("invalid encoder\n");
@@ -1013,6 +1014,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	if (!sde_encoder_is_bridge_enabled(phys_enc->parent)) {
 		SDE_INFO("Skipped, enc%d bridge is not enabled\n",
 				DRMID(phys_enc->parent));
+		is_skip = true;
 		goto skip;
 	}
 
@@ -1040,9 +1042,12 @@ skip:
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
 				SDE_EVTLOG_FUNC_CASE1);
+	} else if (is_skip) {
+		new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, ret, SDE_EVTLOG_FUNC_CASE2);
 	}
 
-	if (notify && timeout && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
+	if (notify && (timeout || is_skip) && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
 			&& phys_enc->parent_ops.handle_frame_done) {
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 
