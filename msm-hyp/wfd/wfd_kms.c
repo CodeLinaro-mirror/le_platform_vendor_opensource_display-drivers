@@ -142,6 +142,7 @@
 #define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT	1088
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
+#define WFD_COLOR_BUF_SIZE 32768
 
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
@@ -326,7 +327,7 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 		ret = -EINVAL;
 		return ret;
 	}
-	pr_debug("HPDLOG port %d name %s connector type id %d, status %d",
+	pr_debug("HPDLOG port %d name %s connector type id %d, status %d\n",
 			priv->wfd_port_id,
 			connector->name,
 			connector->connector_type_id,
@@ -336,11 +337,10 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 		/* Handle HPD connect event*/
 		if (status == WFD_HPD_CONNECT && priv->connector_status ==
 				connector_status_disconnected) {
-			pr_debug("HPDLOG port connect: %x, connector name %s, "
-					"connector id %d, port %d",
+			pr_debug("HPDLOG port connector: %x, name %s, status %d, port %d\n",
 					port_id, connector->name,
 					connector->status,
-					priv->wfd_port);
+					priv->wfd_port_id);
 			priv->base.possible_crtcs = 1 << port_idx;
 			wfdGetPortAttribiv_User(priv->wfd_device,
 				priv->wfd_port,
@@ -358,9 +358,9 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 				ret = -EINVAL;
 				return ret;
 			}
-			pr_debug("HPDLOG GetPortMode %d, %d %d %d\n",
+			pr_debug("HPDLOG GetPortMode %d, %p %p %d\n",
 				num_mode, priv->wfd_device,
-				wfd_dev, priv->wfd_port);
+				wfd_dev, priv->wfd_port_id);
 			priv->mode_count = num_mode;
 
 			wfdGetPortModes_User(priv->wfd_device,
@@ -409,12 +409,11 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 					mode->vtotal *
 					mode->htotal / 1000LL;
 				drm_mode_set_name(mode);
-				pr_debug("HPDLOG information, port[%d] "
-						"hdisplay[%d] vdisplay[%d] clock[%d] "
-						"private[%d] name[%s]",
-						priv->wfd_port_id, mode->hdisplay,
-						mode->vdisplay, mode->clock,
-						priv->port_modes[m], mode->name);
+				pr_debug("HPDLOG info: port[%d] mode name[%s]\n",
+						priv->wfd_port_id, mode->name);
+				pr_debug("hdisplay[%d] vdisplay[%d] clock[%d] private[%p]\n",
+						mode->hdisplay, mode->vdisplay,
+						mode->clock, priv->port_modes[m]);
 			}
 			priv->connector_status = connector_status_connected;
 			connector->status = connector_status_connected;
@@ -424,8 +423,7 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 		else if (status == WFD_HPD_DISCONNECT &&
 				priv->connector_status ==
 				connector_status_connected) {
-			pr_debug("HPDLOG port disconnect: %x, "
-					"connector name %s connector id %d",
+			pr_debug("HPDLOG port disconnect: %x, conn name %s conn id %d\n",
 					port_id, connector->name, connector->status);
 			priv->connector_status = connector_status_disconnected;
 			connector->status = connector_status_disconnected;
@@ -433,7 +431,7 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 		}
 		/*Handle repeated event */
 		else {
-			pr_debug("HPDLOG HPD redundant event port %x, status %d, conn status : %d",
+			pr_debug("HPDLOG HPD redundant event port %x, status %d, conn status : %d\n",
 					port_id, status, priv->connector_status);
 		}
 	}
@@ -452,7 +450,7 @@ static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
 	int ret = 0;
 
 	if (!kms || !info || !params) {
-		pr_err("HPDLOG Null dev : %p, kms %p, info %p, params %p",
+		pr_err("HPDLOG Null dev : %p, kms %p, info %p, params %p\n",
 			dev, kms, info, params);
 		return;
 	}
@@ -465,19 +463,19 @@ static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
 	/* Loop to match device handle */
 	for (i = 0; i < kms->wfd_device_cnt; i++) {
 		wfd_dev = wire_user_get_dev_hdl(kms->wfd_device[i]);
-		pr_debug("HPDLOG dev : %d hdl %d devhdl %d",
+		pr_debug("HPDLOG dev : %p hdl %p devhdl %p\n",
 				kms->wfd_device[i],
 				(WFDDevice)(uintptr_t)disp_event->event_infos.hotplug_info.device,
 				wfd_dev);
 		if (wfd_dev == (WFDDevice)(uintptr_t)disp_event->event_infos.hotplug_info.device) {
 			wfd_dev = kms->wfd_device[i];
-			pr_debug("HPDLOG dev : %d, %d", wfd_dev,
+			pr_debug("HPDLOG dev : %p, %d\n", wfd_dev,
 				disp_event->event_infos.hotplug_info.device);
 			/* Loop to match port ID*/
 			for (j = 0; j < kms->port_cnt; j++) {
 				if (disp_event->event_infos.hotplug_info.port_id ==
 						kms->port_ids[j]) {
-					pr_debug("HPDLOG port : %x j %d",
+					pr_debug("HPDLOG port : %x j %d\n",
 						disp_event->event_infos.hotplug_info.port_id, j);
 					drm_connector_list_iter_begin(dev, &conn_iter);
 					/* Get connector information */
@@ -632,7 +630,7 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 	int i, j, n, ret = 0;
 	int format_count = 0;
 	WFDint reported_format_count = 0;
-	WFDint formats[MAX_PIPELINE_ATTRIBS];
+	WFDint formats[MAX_PIPELINE_ATTRIBS] = {0};
 
 	reported_format_count = wfdGetPipelineAttribi_User(
 			priv->wfd_device,
@@ -647,7 +645,6 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 	if (reported_format_count > MAX_PIPELINE_ATTRIBS)
 		reported_format_count = MAX_PIPELINE_ATTRIBS;
 
-	memset(formats, 0, MAX_PIPELINE_ATTRIBS * sizeof(WFDint));
 	wfdGetPipelineAttribiv_User(priv->wfd_device,
 				priv->wfd_pipeline,
 				WFD_PIPELINE_PIXEL_FORMATS,
@@ -869,11 +866,11 @@ static bool _wfd_kms_plane_is_3d_gamut_changed(
 		gamut->bGamutMapEn = cur_gamut->flags & GAMUT_3D_MAP_EN;
 		for (i = 0; i < GAMUT_3D_SCALE_OFF_TBL_NUM; i++) {
 			for (j = 0; j < GAMUT_3D_SCALE_OFF_SZ; j++) {
-				// 28:12 --> scale
+				/* 28:12 --> scale */
 				scale = (WFDuint32)cur_gamut->scale_off[i][j] & 0x1ffff000;
-				//31:15 -->scale
+				/* 31:15 -->scale */
 				scale = scale << 3;
-				//offset
+				/* offset */
 				offset = (WFDuint32)cur_gamut->scale_off[i][j] & 0x00fff;
 				offset = offset << 4;
 				gamut->uNonUniformMapTableEntries[i][j] =
@@ -947,12 +944,12 @@ static bool _wfd_kms_plane_is_dma_csc_changed(
 	if (dma_config && cur_en)
 		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++) {
 			dma_config->uCscMatrix[i / 3][i % 3] = cur_csc->ctm_coeff[i] >> 16;
-			pr_debug("csc[%d][%d] = %d\n", i / 3, i % 3, (cur_csc->ctm_coeff[i]) >> 16);
+			pr_debug("csc[%d][%d] = %lld\n",
+					i / 3, i % 3, (cur_csc->ctm_coeff[i]) >> 16);
 		}
 
 	return true;
 }
-
 
 void _wfd_kms_plane_is_color_changed(
 		struct msm_hyp_plane_state *pre,
@@ -975,8 +972,7 @@ void _wfd_kms_plane_is_color_changed(
 
 	if (index < 0) {
 		pr_err("Unable to find color buffer for this pipe\n");
-	}
-	else {
+	} else {
 		buff_idx = color_buffer[index].curr_buff_in_use;
 		if (buff_idx == 0)
 			buff_idx = 1;
@@ -991,51 +987,50 @@ void _wfd_kms_plane_is_color_changed(
 	}
 
 	if (!color_cfg) {
-		pr_err("VA of buffer is NULL\n");
+		pr_err("VA of color buffer is NULL\n");
 		return;
-	} else {
-		if (priv->base.vig_pipe) {
-			gamut = &(color_cfg->sVigConfigType);
-			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_GAMUT &&
-				_wfd_kms_plane_is_3d_gamut_changed(
-					pre->gamut_en, cur->gamut_en,
-					&pre->gamut, &cur->gamut, gamut)) {
-				pr_debug("3D LUT updated\n");
-				wfdSetPipelineAttribiv_User(
-					priv->wfd_device,
-					priv->wfd_pipeline,
-					WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
-					1,
-					&export_id);
-			}
-		} else {
-			dma_config = &(color_cfg->sDMAConfig);
-			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_CSC)
-				csc_changed = _wfd_kms_plane_is_dma_csc_changed(
-							pre->dma_csc_en, cur->dma_csc_en,
-							&pre->dma_csc, &cur->dma_csc, dma_config);
-			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_GC)
-				gc_changed = _wfd_kms_dma_gc_changed(
-							pre->dma_gc_en, cur->dma_gc_en,
-							&pre->dma_gc, &cur->dma_gc, dma_config);
-			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_IGC)
-				igc_changed = _wfd_kms_dma_igc_changed(
-							pre->dma_igc_en, cur->dma_igc_en,
-							&pre->dma_igc, &cur->dma_igc, dma_config);
-			if (csc_changed || gc_changed || igc_changed) {
-				pr_debug("bGCEnabled %d\n", dma_config->bGCEnabled);
-				pr_debug("bIGCEnabled %d\n", dma_config->bIGCEnabled);
-				pr_debug("bCSCEnabled %d\n", dma_config->bCSCEnabled);
-				wfdSetPipelineAttribiv_User(
-					priv->wfd_device,
-					priv->wfd_pipeline,
-					WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
-					1,
-					&export_id);
-			}
-		}
 	}
 
+	if (priv->base.vig_pipe) {
+		gamut = &(color_cfg->sVigConfigType);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_GAMUT &&
+			_wfd_kms_plane_is_3d_gamut_changed(
+				pre->gamut_en, cur->gamut_en,
+				&pre->gamut, &cur->gamut, gamut)) {
+			pr_debug("3D LUT updated\n");
+			wfdSetPipelineAttribiv_User(
+				priv->wfd_device,
+				priv->wfd_pipeline,
+				WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
+				1,
+				&export_id);
+		}
+	} else {
+		dma_config = &(color_cfg->sDMAConfig);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_CSC)
+			csc_changed = _wfd_kms_plane_is_dma_csc_changed(
+						pre->dma_csc_en, cur->dma_csc_en,
+						&pre->dma_csc, &cur->dma_csc, dma_config);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_GC)
+			gc_changed = _wfd_kms_dma_gc_changed(
+						pre->dma_gc_en, cur->dma_gc_en,
+						&pre->dma_gc, &cur->dma_gc, dma_config);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_IGC)
+			igc_changed = _wfd_kms_dma_igc_changed(
+						pre->dma_igc_en, cur->dma_igc_en,
+						&pre->dma_igc, &cur->dma_igc, dma_config);
+		if (csc_changed || gc_changed || igc_changed) {
+			pr_debug("bGCEnabled %d\n", dma_config->bGCEnabled);
+			pr_debug("bIGCEnabled %d\n", dma_config->bIGCEnabled);
+			pr_debug("bCSCEnabled %d\n", dma_config->bCSCEnabled);
+			wfdSetPipelineAttribiv_User(
+				priv->wfd_device,
+				priv->wfd_pipeline,
+				WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
+				1,
+				&export_id);
+		}
+	}
 }
 
 static int _wfd_kms_format_to_openwfd_format(uint32_t format,
@@ -1098,6 +1093,7 @@ static void wfd_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	struct wfd_framebuffer_priv *fb_priv = container_of(fb->info,
 				struct wfd_framebuffer_priv, base);
 	int num_planes = fb->base.format->num_planes;
+
 	if (!fb->info)
 		return;
 
@@ -1145,6 +1141,9 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			if (IS_ERR(dma_bufs[i])) {
 				pr_err("export dma_buf from bo failed\n");
 				return PTR_ERR(dma_bufs[i]);
+			} else {
+				fb->base.obj[i]->dma_buf = dma_bufs[i];
+				get_dma_buf(dma_bufs[i]);
 			}
 		}
 	}
@@ -1196,22 +1195,143 @@ static int wfd_kms_get_framebuffer_info(struct msm_hyp_kms *kms,
 	return 0;
 }
 
+static int wfd_kms_color_buf_init(struct device *device,
+		WFDDevice dev, WFDPipeline pipeline)
+{
+	WFDint color_buf[WIRE_HOST_MAX_COLOR_BUFF] = {0};
+	int color_buf_idx = -1;
+	int k = 0;
+	int rc = 0;
+	int ret = 0;
+	int32_t *va = NULL;
+	int buff_len = WFD_COLOR_BUF_SIZE;
+	struct user_os_utils_mem_info mem = {0};
+	dma_addr_t dma_handle;
+	struct wire_device *wire_dev = dev;
+	void *wire_ctx = wire_dev->ctx->init_info.context;
+
+	color_buf[0] = 0;
+	color_buf[1] = 0;
+
+	color_buf_idx = -1;
+	get_available_color_buff(&color_buf_idx);
+
+	for (k = 0; k < WIRE_HOST_MAX_COLOR_BUFF; k++) {
+		/* allocate coherent memory */
+		va = dma_alloc_coherent(device, buff_len,
+			&dma_handle, GFP_KERNEL);
+		if (!va) {
+			ret = -ENOMEM;
+			goto exit;
+		}
+
+		if (color_buf_idx >= 0) {
+			pr_debug("VA for buffer allocation is %p\n", va);
+			memset(va, 0x00, buff_len);
+			mem.size = buff_len;
+			mem.buffer = va;
+			mem.shmem_type = HAB_EXPORT_ID;
+
+			/* export this memory block to backend */
+			rc = user_os_utils_shmem_export(wire_ctx, &mem, HABMM_EXP_MEM_TYPE_DMA);
+			if (rc) {
+				pr_err("Export color buf failed\n");
+				ret = rc;
+				goto fail;
+			}
+			color_buf[k] = (i32)mem.shmem_id;
+			pr_debug("Export color buf passed for %llu\n", mem.shmem_id);
+
+			/* fill the color buf struct */
+			pr_debug("Filling data at location %d\n", color_buf_idx);
+			color_buffer[color_buf_idx].valid = 1;
+			color_buffer[color_buf_idx].device = dev;
+			color_buffer[color_buf_idx].pipeline = pipeline;
+			color_buffer[color_buf_idx].buffer_info[k].valid = 1;
+			color_buffer[color_buf_idx].buffer_info[k].va = va;
+			color_buffer[color_buf_idx].buffer_info[k].export_id = color_buf[k];
+			color_buffer[color_buf_idx].buffer_info[k].dmabuf_handle = &dma_handle;
+		} else {
+			pr_err("Color buffer not available\n");
+			ret = -1;
+			goto fail;
+		}
+	}
+
+	/* pass the export_id of color buffer to backend */
+	if (color_buffer[color_buf_idx].valid) {
+		wfdSetPipelineAttribiv_User(
+			dev,
+			pipeline,
+			WFD_PIPELINE_COLOR_CONFIG_BUFFER,
+			WIRE_HOST_MAX_COLOR_BUFF,
+			color_buf);
+	}
+
+	return ret;
+
+fail:
+	dma_free_coherent(device, buff_len, va, dma_handle);
+
+exit:
+	return ret;
+}
+
+static void wfd_kms_color_buf_deinit(struct wfd_kms *kms,
+		struct device *dev, void *handle, int i, int j)
+{
+	int index = -1;
+	int buff_idx = 0;
+	int export_id = 0;
+	int buf_len = WFD_COLOR_BUF_SIZE;
+	dma_addr_t *dma_handle = NULL;
+	int32_t *va = NULL;
+	struct user_os_utils_mem_info mem = { 0 };
+
+	if (!kms || !dev || !handle) {
+		pr_err("invalid input parameters\n");
+		return;
+	}
+
+	/* unexport the buffers */
+	mem.shmem_type = HAB_EXPORT_ID;
+	/* Get export id */
+	_wfd_kms_get_color_buff_idx(kms->port_devs[i],
+		kms->pipelines[i][j],
+		&index);
+	if (index < 0) {
+		pr_err("Unable to find color buffer for this pipe\n");
+	} else {
+		for (buff_idx = 0; buff_idx < WIRE_HOST_MAX_COLOR_BUFF; buff_idx++) {
+			if (color_buffer[index].buffer_info[buff_idx].valid) {
+				export_id =
+					color_buffer[index].buffer_info[buff_idx].export_id;
+				mem.shmem_id = export_id;
+				if (user_os_utils_shmem_unexport(handle, &mem, 0))
+					pr_err("Failed to unexport shmem buffer\n");
+				else
+					pr_debug("passed to unexport shmem buffer\n");
+
+				dma_handle =
+					color_buffer[index].buffer_info[buff_idx].dmabuf_handle;
+				va = color_buffer[index].buffer_info[buff_idx].va;
+				dma_free_coherent(dev, buf_len, va, *dma_handle);
+
+				color_buffer[index].buffer_info[buff_idx].valid = 0;
+				color_buffer[index].valid = 0;
+			}
+		}
+	}
+}
+
 static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 		WFDDevice dev, WFDPort port, int port_idx, struct device *device)
 {
 	WFDint pipe_ids[MAX_PIPELINE_ATTRIBS];
 	WFDint pipe_id;
-	WFDint color_buf[WIRE_HOST_MAX_COLOR_BUFF] = {0};
 	WFDPipeline pipeline, master_pipeline;
-	int i, j, num_pipeline, pipeline_idx, k;
-	dma_addr_t dma_handle;
-	int32_t *va = NULL;
-	int buff_len = 32768;
-	struct user_os_utils_mem_info mem;
-	int rc = 0;
-	struct wire_device *wire_dev = dev;
-	void *wire_ctx = wire_dev->ctx->init_info.context;
-	int color_buf_idx = -1;
+	int i, j, num_pipeline, pipeline_idx;
+	int ret = 0;
 
 	num_pipeline = wfdGetPortAttribi_User(
 			dev,
@@ -1260,54 +1380,10 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 			if (j == MASTER_PIPE_IDX)
 				master_pipeline = pipeline;
 
-			color_buf[0] = 0;
-			color_buf[1] = 0;
-
-			color_buf_idx = -1;
-			get_available_color_buff(&color_buf_idx);
-
-			for (k = 0; k < WIRE_HOST_MAX_COLOR_BUFF; k++) {
-
-				va = dma_alloc_coherent(device, buff_len,
-							&dma_handle, GFP_KERNEL);
-				if (!va) {
-					pr_err("Memory allocation failed\n");
-				} else {
-					pr_debug("VA for buffer allocation is %p\n", va);
-					memset(va, 0x00, buff_len);
-					mem.size = buff_len;
-					mem.buffer = va;
-					mem.shmem_type = HAB_EXPORT_ID;
-
-					rc = user_os_utils_shmem_export(wire_ctx, &mem, HABMM_EXP_MEM_TYPE_DMA);
-					if (rc) {
-						pr_err("Export failed\n");
-					} else {
-						color_buf[k] = (i32)mem.shmem_id;
-						pr_debug("Export passed for %d\n", mem.shmem_id);
-					}
-				}
-
-				if (color_buf_idx >= 0) {
-					pr_debug("Filling data at location %d\n", color_buf_idx);
-					color_buffer[color_buf_idx].valid = 1;
-					color_buffer[color_buf_idx].device = dev;
-					color_buffer[color_buf_idx].pipeline = pipeline;
-					color_buffer[color_buf_idx].buffer_info[k].valid = 1;
-					color_buffer[color_buf_idx].buffer_info[k].va = va;
-					color_buffer[color_buf_idx].buffer_info[k].export_id = color_buf[k];
-					color_buffer[color_buf_idx].buffer_info[k].dmabuf_handle =
-								&dma_handle;
-					wfdSetPipelineAttribiv_User(
-						dev,
-						pipeline,
-						WFD_PIPELINE_COLOR_CONFIG_BUFFER,
-						WIRE_HOST_MAX_COLOR_BUFF,
-						color_buf);
-				} else {
-					pr_err("Color buffer not available\n");
-				}
-			}
+			/* initialize the color buffer per pipeline */
+			ret = wfd_kms_color_buf_init(device, dev, pipeline);
+			if (ret)
+				pr_err("wfd_kms_color_buf_init failed, ret:%d\n", ret);
 		}
 	}
 }
@@ -1402,7 +1478,7 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms, struct device *dev)
 		kms->port_devs[port_idx] = wfd_kms_ports[port_idx].wfd_device;
 		kms->port_cnt++;
 
-		 _wfd_kms_pipeline_init(kms, kms->port_devs[port_idx],
+		_wfd_kms_pipeline_init(kms, kms->port_devs[port_idx],
 				kms->ports[port_idx], port_idx, dev);
 	}
 
@@ -1666,14 +1742,13 @@ static int wfd_kms_get_connector_infos(struct msm_hyp_kms *kms,
 					mode->vtotal *
 					mode->htotal / 1000LL;
 			drm_mode_set_name(mode);
-			/* TODO : Need to remove this condition with proper
-			 * fix */
+			/* TODO : Need to remove this condition with proper fix */
 			if (mode->hdisplay == 0) {
-				pr_err("HPDLOG information, port[%d],"
-					"hdisplay[%d] vdisplay[%d] clock[%d],"
-					"private[%d] name[%s]", priv->wfd_port_id,
-					mode->hdisplay, mode->vdisplay,
-					mode->clock, priv->port_modes[j], mode->name);
+				pr_err("HPDLOG info: port[%d], mode name[%s]\n",
+						priv->wfd_port_id, mode->name);
+				pr_err("hdisplay[%d] vdisplay[%d] clock[%d] private[%p]\n",
+						mode->hdisplay, mode->vdisplay,
+						mode->clock, priv->port_modes[j]);
 				priv->connector_status = connector_status_disconnected;
 			}
 		}
@@ -1802,10 +1877,9 @@ static void wfd_kms_crtc_atomic_begin(struct msm_hyp_kms *kms,
 	struct drm_crtc_state *old_state;
 	struct msm_hyp_crtc_state *old_cstate, *new_cstate;
 	__u64 flags = 0;
-	struct WFDPortHISCSetType hsic;
+	struct WFDPortHISCSetType hsic = {0};
 
 	/* PP feature, HSIC */
-	memset(&hsic, 0, sizeof(hsic));
 	old_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
 	old_cstate = to_msm_hyp_crtc_state(old_state);
 	new_cstate = to_msm_hyp_crtc_state(crtc->state);
@@ -2074,18 +2148,20 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 		case SDE_DRM_BLEND_OP_OPAQUE:
 			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
+		/* extend to support coverage by introducing a new alpha definition */
+		case SDE_DRM_BLEND_OP_COVERAGE:
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA |
+				WFD_TRANSPARENCY_SOURCE_ALPHA_NONPREMULTIPLIED;
+			break;
 		case SDE_DRM_BLEND_OP_PREMULTIPLIED:
 			trans_val = WFD_TRANSPARENCY_SOURCE_ALPHA |
 				WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
-		case SDE_DRM_BLEND_OP_COVERAGE:
-		/* TODO:wfd spec not support, new Attribi to support this */
 		default:
 		/* follow kernel-metal, use opaque as default */
 			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
 		}
-
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
@@ -2093,7 +2169,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			trans_val);
 	}
 
-	// All updates have been sent to host, clear dirty flags
+	/* All updates have been sent to host, clear dirty flags */
 	new_pstate->dirty_flags = 0;
 
 	priv->committed = true;
@@ -2194,7 +2270,7 @@ static int _wfd_kms_plane_rot_atomic_check(struct drm_plane *plane,
 		}
 
 		/* check for valid formats supported by inline rot */
-		//TODO, get this ubwc supported format information from QNX
+		/* TODO, get this ubwc supported format information from QNX */
 		if ((state->fb->modifier & DRM_FORMAT_MOD_QTI_COMPRESSED)
 				&& (is_ubwc_supported_format(state->fb->format->format)))
 			format_support =
@@ -2677,7 +2753,7 @@ static void wfd_kms_register_event(struct msm_hyp_kms *kms)
 	int i = 0;
 
 	for (i = 0; i < wfd_kms->wfd_device_cnt; i++) {
-		pr_debug("HPDLOG %s i : %d, dev : %d\n", __func__,
+		pr_debug("HPDLOG %s i : %d, dev : %p\n", __func__,
 				i, wfd_kms->wfd_device[i]);
 		disp_event.type = HPD;
 		disp_event.event_infos.display_id = i;
@@ -2769,13 +2845,10 @@ static int wfd_kms_probe(struct platform_device *pdev)
 static int wfd_kms_remove(struct platform_device *pdev)
 {
 	struct wfd_kms *kms = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
 	int i, j;
-	int index = -1;
-	int buff_idx = 0;
 	struct wire_device *wire_dev = NULL;
-	int export_id = 0;
 	void *handle = NULL;
-	struct user_os_utils_mem_info mem = { 0 };
 
 	for (i = 0; i < kms->port_cnt; i++) {
 		for (j = 0; j < kms->pipeline_cnt[i]; j++) {
@@ -2785,32 +2858,7 @@ static int wfd_kms_remove(struct platform_device *pdev)
 				wfdSetPipelineAttribiv_User(kms->port_devs[i], kms->pipelines[i][j],
 					WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
 				wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);
-				// unexport the buffers
-				mem.shmem_type = HAB_EXPORT_ID;
-				// Get export id
-				_wfd_kms_get_color_buff_idx(kms->port_devs[i],
-					kms->pipelines[i][j],
-					&index);
-				if (index < 0) {
-					pr_err("Unable to find color buffer for this pipe\n");
-				} else {
-					for (buff_idx = 0; buff_idx < 2; buff_idx++) {
-						if (color_buffer[index].buffer_info[buff_idx].valid) {
-							export_id =
-								color_buffer[index].buffer_info[buff_idx].export_id;
-							mem.shmem_id = export_id;
-							if (user_os_utils_shmem_unexport(handle, &mem, 0))
-								pr_err("Failed to unexport shmem buffer\n");
-							else
-								pr_debug("passed to unexport shmem buffer\n");
-						}
-					}
-				}
-				mem.shmem_id = export_id;
-				if (user_os_utils_shmem_unexport(handle, &mem, 0))
-					pr_err("Failed to unexport shmem buffer\n");
-				else
-					pr_debug("passed to unexport shmem buffer\n");
+				wfd_kms_color_buf_deinit(kms, dev, handle, i, j);
 			}
 		}
 		wfdDestroyPort_User(kms->port_devs[i], kms->ports[i]);
