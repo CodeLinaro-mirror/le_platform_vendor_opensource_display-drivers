@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -285,7 +285,8 @@ static bool dp_display_is_ready(struct dp_display_private *dp)
 {
 	return dp->hpd->hpd_high && dp_display_state_is(DP_STATE_CONNECTED) &&
 		!dp_display_is_sink_count_zero(dp) &&
-		dp->hpd->alt_mode_cfg_done;
+		dp->hpd->alt_mode_cfg_done &&
+		!dp_display_state_is(DP_STATE_ABORTED);
 }
 
 static void dp_audio_enable(struct dp_display_private *dp, bool enable)
@@ -1809,7 +1810,7 @@ static void dp_display_clean(struct dp_display_private *dp)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 }
 
-static int dp_display_handle_disconnect(struct dp_display_private *dp)
+static int dp_display_handle_disconnect(struct dp_display_private *dp, bool fast_mode)
 {
 	int rc;
 
@@ -1839,9 +1840,13 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 		dp_display_process_hpd_high(dp, false);
 
 		/* If stream isn't running, started here */
-		if (!dp_display_state_is(DP_STATE_ENABLED) && dp->dp_display.base_connector)
-			sde_connector_helper_mode_change_commit(
-					dp->dp_display.base_connector);
+		if (!dp_display_state_is(DP_STATE_ENABLED) && dp->dp_display.base_connector) {
+			if (!fast_mode)
+				sde_connector_helper_mode_change_commit(
+						dp->dp_display.base_connector);
+			else
+				DP_INFO("Skip stream enabling for fast mode\n");
+		}
 
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 		return 0;
@@ -1871,11 +1876,12 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 	return rc;
 }
 
-static void dp_display_disconnect_sync(struct dp_display_private *dp)
+static void dp_display_disconnect_sync(struct dp_display_private *dp, bool fast_mode)
 {
 	int disconnect_delay_ms;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	DP_INFO("Aborting  fast_mode=%d\n", fast_mode);
 	/* cancel any pending request */
 	dp_display_state_add(DP_STATE_ABORTED);
 
@@ -1886,6 +1892,7 @@ static void dp_display_disconnect_sync(struct dp_display_private *dp)
 	cancel_work_sync(&dp->connect_work);
 	cancel_work_sync(&dp->attention_work);
 	flush_workqueue(dp->wq);
+	DP_INFO("Aborted\n");
 
 	/*
 	 * Delay the teardown of the mainlink for better interop experience.
@@ -1901,7 +1908,7 @@ static void dp_display_disconnect_sync(struct dp_display_private *dp)
 			dp->cell_idx, disconnect_delay_ms);
 	msleep(disconnect_delay_ms);
 
-	dp_display_handle_disconnect(dp);
+	dp_display_handle_disconnect(dp, fast_mode);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
 		disconnect_delay_ms);
 }
@@ -1944,7 +1951,7 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 	if (dp->debug->psm_enabled && dp_display_state_is(DP_STATE_READY))
 		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 
-	dp_display_disconnect_sync(dp);
+	dp_display_disconnect_sync(dp, false);
 
 	if (!dp->parser->force_connect_mode) {
 		mutex_lock(&dp->session_lock);
@@ -2024,7 +2031,7 @@ static void dp_display_attention_work(struct work_struct *work)
 	if (dp->link->sink_request & DS_PORT_STATUS_CHANGED) {
 		SDE_EVT32_EXTERNAL(dp->state, DS_PORT_STATUS_CHANGED);
 		if (dp_display_is_sink_count_zero(dp)) {
-			dp_display_handle_disconnect(dp);
+			dp_display_handle_disconnect(dp, false);
 		} else {
 			/*
 			 * connect work should take care of sending
@@ -2039,7 +2046,7 @@ static void dp_display_attention_work(struct work_struct *work)
 
 	if (dp->link->sink_request & DP_TEST_LINK_VIDEO_PATTERN) {
 		SDE_EVT32_EXTERNAL(dp->state, DP_TEST_LINK_VIDEO_PATTERN);
-		dp_display_handle_disconnect(dp);
+		dp_display_handle_disconnect(dp, true);
 
 		dp->panel->video_test = true;
 		/*
@@ -2057,7 +2064,7 @@ static void dp_display_attention_work(struct work_struct *work)
 	 */
 	if ((dp->parser->no_aux_switch && !dp->parser->lphw_hpd) &&
 			(dp->link->sink_request & DP_TEST_LINK_EDID_READ)) {
-		dp_display_handle_disconnect(dp);
+		dp_display_handle_disconnect(dp, true);
 		queue_work(dp->wq, &dp->connect_work);
 		goto mst_attention;
 	}
@@ -2089,7 +2096,7 @@ static void dp_display_attention_work(struct work_struct *work)
 			if (dp->parser->no_aux_switch &&
 					!dp->parser->lphw_hpd) {
 				mutex_unlock(&dp->session_lock);
-				dp_display_handle_disconnect(dp);
+				dp_display_handle_disconnect(dp, true);
 				queue_work(dp->wq, &dp->connect_work);
 				goto mst_attention;
 			} else {
@@ -2155,7 +2162,7 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 			!!dp_display_state_is(DP_STATE_CONNECTED));
 
 	if (!dp->hpd->hpd_high) {
-		dp_display_disconnect_sync(dp);
+		dp_display_disconnect_sync(dp, false);
 		return 0;
 	}
 
@@ -2267,7 +2274,7 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 	SDE_EVT32_EXTERNAL(dp->state, dp->debug->sim_mode, action);
 	if (!action && dp->debug->sim_mode) {
 		DP_WARN("DP%d usb disconnected during simulation\n", dp->cell_idx);
-		dp_display_disconnect_sync(dp);
+		dp_display_disconnect_sync(dp, false);
 		dp->debug->abort(dp->debug);
 	}
 
@@ -2330,7 +2337,7 @@ int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
 	if (notifier_data->cb_type == MMRM_CLIENT_RESOURCE_VALUE_CHANGE
 				&& dp_display_state_is(DP_STATE_ENABLED)
 				&& !dp_display_state_is(DP_STATE_ABORTED)) {
-		ret = dp_display_handle_disconnect(dp);
+		ret = dp_display_handle_disconnect(dp, false);
 		if (ret)
 			DP_ERR("DP%d mmrm callback error reducing clk, ret:%d\n",
 					dp->cell_idx, ret);
@@ -2347,7 +2354,7 @@ static void dp_display_force_connect_work(struct work_struct *work)
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, force_connect_work);
 
-	dp_display_disconnect_sync(dp);
+	dp_display_disconnect_sync(dp, true);
 	mutex_lock(&dp->session_lock);
 	dp_display_host_init(dp);
 	mutex_unlock(&dp->session_lock);
@@ -4745,7 +4752,7 @@ static void dp_pm_complete(struct device *dev)
 			mutex_unlock(&dp->session_lock);
 
 			// Trigger a disconnect->connect transition
-			dp_display_disconnect_sync(dp);
+			dp_display_disconnect_sync(dp, true);
 			mutex_lock(&dp->session_lock);
 			dp_display_host_init(dp);
 			queue_work(dp->wq, &dp->connect_work);
