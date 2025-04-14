@@ -413,6 +413,19 @@ static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage,
 	cfg->dirty = true;
 }
 
+static void _sde_shd_setup_alpha_out(struct sde_hw_mixer *ctx,
+	uint32_t mixer_op_mode)
+{
+	struct sde_shd_hw_mixer *hw_lm;
+
+	if (!ctx)
+		return;
+
+	hw_lm = container_of(ctx, struct sde_shd_hw_mixer, base);
+
+	hw_lm->mixer_op_mode = mixer_op_mode;
+}
+
 static void _sde_shd_setup_dim_layer(struct sde_hw_mixer *ctx,
 		struct sde_hw_dim_layer *dim_layer)
 {
@@ -491,6 +504,9 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 				hw_lm->cfg[i].blend_op);
 			hw_lm->cfg[i].dirty = false;
 		}
+	}
+	if (hw_lm->orig->ops.setup_alpha_out) {
+		hw_lm->orig->ops.setup_alpha_out(ctx, hw_lm->mixer_op_mode);
 	}
 }
 
@@ -655,6 +671,9 @@ void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 {
 	ctx->ops.setup_blend_config =
 			_sde_shd_setup_blend_config;
+
+	ctx->ops.setup_alpha_out =
+			_sde_shd_setup_alpha_out;
 
 	ctx->ops.setup_dim_layer =
 			_sde_shd_setup_dim_layer;

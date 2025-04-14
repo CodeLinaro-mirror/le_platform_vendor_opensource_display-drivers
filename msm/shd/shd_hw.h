@@ -61,6 +61,7 @@ struct sde_shd_hw_mixer {
 	struct sde_rect roi;
 	struct sde_hw_mixer *orig;
 	struct sde_shd_mixer_cfg cfg[SDE_STAGE_MAX];
+	u32 mixer_op_mode;
 };
 
 struct sde_shd_hw_roi_misr {
