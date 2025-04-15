@@ -2894,7 +2894,9 @@ static struct platform_driver msm_platform_driver = {
 	.driver     = {
 		.name   = "msm_drm_hyp",
 		.of_match_table = dt_match,
+#ifndef HEADLESS_VM
 		.pm = &msm_hyp_pm_ops,
+#endif
 	},
 	.id_table   = msm_id,
 };
