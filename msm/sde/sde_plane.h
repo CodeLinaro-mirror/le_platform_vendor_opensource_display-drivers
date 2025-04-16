@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -372,7 +372,8 @@ void sde_plane_get_frame_data(struct drm_plane *plane,
  * @enable: enable/disable flag
  */
 void sde_plane_setup_src_split_order(struct drm_plane *plane,
-		enum sde_sspp_multirect_index rect_mode, bool enable);
+		enum sde_sspp_multirect_index rect_mode,
+		bool enable, struct sde_hw_mixer *lm);
 
 /*
  * sde_plane_set_sid - set VM SID for the plane

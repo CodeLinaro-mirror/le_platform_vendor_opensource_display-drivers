@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -700,13 +700,16 @@ void sde_encoder_phys_shd_trigger_flush(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_enc_shd_state *shd_enc_state;
+	struct shd_display *display;
 
 	shd_enc = container_of(phys_enc, struct sde_encoder_phys_shd, base);
 	shd_enc_state = to_sde_enc_shd_priv_state(shd_enc->obj.state);
 
 	SDE_EVT32(phys_enc->intf_idx - INTF_0);
 
-	sde_shd_hw_flush(phys_enc->hw_ctl,
+	display = sde_connector_get_display(phys_enc->connector);
+
+	sde_shd_hw_flush(display, phys_enc->hw_ctl,
 			shd_enc_state->hw_lm, shd_enc_state->num_mixers,
 			shd_enc_state->hw_roi_misr, shd_enc_state->num_roi_misrs);
 }

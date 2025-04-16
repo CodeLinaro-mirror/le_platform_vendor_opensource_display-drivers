@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1671,7 +1671,7 @@ static int _sde_crtc_validate_src_split_order(struct drm_crtc *crtc,
 }
 
 static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
-		struct plane_state *pstates, int cnt)
+		struct plane_state *pstates, int cnt, struct sde_hw_mixer *lm)
 {
 	struct plane_state *prv_pstate, *cur_pstate, *nxt_pstate;
 	u32 prev_layout, cur_layout;
@@ -1741,7 +1741,7 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 		sde_plane_setup_src_split_order(
 			cur_pstate->drm_pstate->plane,
 			cur_pstate->sde_pstate->multirect_index,
-			cur_pstate->sde_pstate->pipe_order_flags);
+			cur_pstate->sde_pstate->pipe_order_flags, lm);
 	}
 }
 
@@ -1929,7 +1929,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		ctl->ops.set_active_pipes(ctl, fetch_active);
 
 	sort(pstates, cnt, sizeof(pstates[0]), pstate_cmp, NULL);
-	_sde_crtc_set_src_split_order(crtc, pstates, cnt);
+	_sde_crtc_set_src_split_order(crtc, pstates, cnt, lm);
 
 	if (lm && lm->ops.setup_dim_layer) {
 		cstate = to_sde_crtc_state(crtc->state);

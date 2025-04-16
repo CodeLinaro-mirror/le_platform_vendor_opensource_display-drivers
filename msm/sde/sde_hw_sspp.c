@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -320,6 +320,16 @@ static void sde_hw_sspp_set_src_split_order(struct sde_hw_pipe *ctx,
 		opmode &= ~MDSS_MDP_OP_SPLIT_ORDER;
 
 	SDE_REG_WRITE(c, op_mode_off + idx, opmode);
+}
+
+static void sde_hw_sspp_shd_set_src_split_order(struct sde_hw_pipe *ctx,
+	enum sde_sspp_multirect_index rect_mode, bool enable)
+{
+	ctx->shd_config.rect_mode = rect_mode;
+	ctx->shd_config.enable = enable;
+
+	SDE_INFO("Cache SHD src split");
+	return;
 }
 
 static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_reg_map *c,
@@ -1544,6 +1554,7 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		c->ops.setup_pe = sde_hw_sspp_setup_pe_config;
 		c->ops.setup_secure_address = sde_hw_sspp_setup_secure;
 		c->ops.set_src_split_order = sde_hw_sspp_set_src_split_order;
+		c->ops.shd_set_src_split_order = sde_hw_sspp_shd_set_src_split_order;
 		c->ops.dump = sde_hw_sspp_dump;
 	}
 
@@ -1759,4 +1770,3 @@ void sde_hw_sspp_destroy(struct sde_hw_pipe *ctx)
 	}
 	kfree(ctx);
 }
-

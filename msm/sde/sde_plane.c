@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -158,7 +158,9 @@ bool sde_plane_is_sec_ui_allowed(struct drm_plane *plane)
 }
 
 void sde_plane_setup_src_split_order(struct drm_plane *plane,
-		enum sde_sspp_multirect_index rect_mode, bool enable)
+		enum sde_sspp_multirect_index rect_mode,
+		bool enable,
+		struct sde_hw_mixer *lm)
 {
 	struct sde_plane *psde;
 
@@ -166,9 +168,14 @@ void sde_plane_setup_src_split_order(struct drm_plane *plane,
 		return;
 
 	psde = to_sde_plane(plane);
-	if (psde->pipe_hw->ops.set_src_split_order)
-		psde->pipe_hw->ops.set_src_split_order(psde->pipe_hw,
+
+	if (psde->pipe_hw->ops.set_src_split_order) {
+		if (lm && lm->ops.setup_pipe_src_split_order) /* shd */
+			lm->ops.setup_pipe_src_split_order(psde->pipe_hw, rect_mode, enable);
+		else
+			psde->pipe_hw->ops.set_src_split_order(psde->pipe_hw,
 					rect_mode, enable);
+	}
 }
 
 void sde_plane_set_sid(struct drm_plane *plane, u32 vm)

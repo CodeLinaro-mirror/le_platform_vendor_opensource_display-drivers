@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +9,7 @@
 
 #include "sde_hw_mdss.h"
 #include "sde_hw_util.h"
+#include "sde_hw_sspp.h"
 
 struct sde_hw_mixer;
 
@@ -46,6 +48,12 @@ struct sde_hw_lm_ops {
 	 * Alpha color component selection from either fg or bg
 	 */
 	void (*setup_alpha_out)(struct sde_hw_mixer *ctx, uint32_t mixer_op);
+
+	/*
+	 * Pipe src split order left/right
+	 */
+	void (*setup_pipe_src_split_order)(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index rect_mode, bool enable);
 
 	/**
 	 * setup_border_color : enable/disable border color
