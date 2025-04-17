@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1105,6 +1105,7 @@ struct msm_drm_private {
 
 	/* flag for initialization status */
 	unsigned int init_comp;
+	struct mutex kms_client_lock;
 };
 
 /* get struct msm_kms * from drm_device * */
