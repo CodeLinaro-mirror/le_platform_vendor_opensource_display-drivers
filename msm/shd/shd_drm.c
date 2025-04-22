@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -376,6 +376,8 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc,
 	struct drm_crtc_state *base_drm_crtc_state = NULL;
 	struct sde_crtc_state *base_sde_cstate;
 	struct sde_crtc *base_sde_crtc;
+	struct sde_kms *sde_kms;
+	struct msm_drm_private *priv;
 	int rc;
 
 	if(!crtc || !atomic_state) {
@@ -389,9 +391,25 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc,
 		SDE_ERROR("invalid state, state = 0x%pK.\n", state);
 		return -EINVAL;
 	}
+
 	if(!state->state) {
-		SDE_ERROR("invalid atomic state, state = 0x%pK.\n", state->state);
-		return -EINVAL;
+		priv = atomic_state->dev->dev_private;
+		if (!priv || !priv->kms) {
+			SDE_ERROR("invalid kms\n");
+			return -EINVAL;
+		}
+
+		sde_kms = to_sde_kms(priv->kms);
+		if (sde_kms && sde_kms->suspend_state &&
+				(atomic_state == sde_kms->suspend_state) && !sde_kms->suspend_block) {
+			SDE_INFO("[crtc:%d:%s new crtc state:0x%pK] invalid atomic state in new crtc state = 0x%pK.\n",
+						crtc->base.id, crtc->name, state, state->state);
+			SDE_INFO("recover atomic state from suspend_state = 0x%pK.\n", sde_kms->suspend_state);
+			state->state = sde_kms->suspend_state;
+		} else {
+			SDE_ERROR("invalid atomic state, state = 0x%pK.\n", state->state);
+			return -EINVAL;
+		}
 	}
 
 	sde_crtc = to_sde_crtc(crtc);
