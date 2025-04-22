@@ -516,7 +516,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 		phys_enc->hw_ctl = to_sde_hw_ctl(iter.hw);
 
 	if (IS_ERR_OR_NULL(phys_enc->hw_ctl)) {
-		SDE_DEBUG("failed to init ctl, %ld\n", PTR_ERR(phys_enc->hw_ctl));
+		SDE_INFO("failed to init ctl, %ld\n", PTR_ERR(phys_enc->hw_ctl));
 
 		phys_enc->hw_ctl = NULL;
 		return;
@@ -526,7 +526,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	if (sde_rm_get_hw(rm, &iter))
 		phys_enc->hw_intf = to_sde_hw_intf(iter.hw);
 	if (IS_ERR_OR_NULL(phys_enc->hw_intf)) {
-		SDE_DEBUG("failed to init intf: %ld\n", PTR_ERR(phys_enc->hw_intf));
+		SDE_INFO("failed to init intf: %ld\n", PTR_ERR(phys_enc->hw_intf));
 
 		phys_enc->hw_intf = NULL;
 		return;
@@ -536,7 +536,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	if (sde_rm_get_hw(rm, &iter))
 		phys_enc->hw_pp =  to_sde_hw_pingpong(iter.hw);
 	if (IS_ERR_OR_NULL(phys_enc->hw_pp)) {
-		SDE_DEBUG("failed to init pingpong: %ld\n", PTR_ERR(phys_enc->hw_pp));
+		SDE_INFO("failed to init pingpong: %ld\n", PTR_ERR(phys_enc->hw_pp));
 
 		phys_enc->hw_pp = NULL;
 		return;
