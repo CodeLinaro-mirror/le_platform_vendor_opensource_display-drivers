@@ -3221,37 +3221,14 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 }
 
-static void sde_encoder_wait_for_vsync_event_complete(struct sde_encoder_virt *sde_enc)
-{
-	u32 timeout_ms = DEFAULT_KICKOFF_TIMEOUT_MS;
-	int i, ret;
-
-	if (sde_enc->cur_master)
-		timeout_ms = sde_enc->cur_master->kickoff_timeout_ms;
-
-	ret = wait_event_timeout(sde_enc->vsync_event_wq,
-			!sde_enc->vblank_enabled,
-			msecs_to_jiffies(timeout_ms));
-	SDE_EVT32(timeout_ms, ret);
-
-	if (!ret) {
-		SDE_ERROR("vsync event complete timed out %d\n", ret);
-		SDE_EVT32(ret, SDE_EVTLOG_ERROR);
-		for (i = 0; i < sde_enc->num_phys_encs; i++) {
-			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
-
-			if (phys && phys->ops.control_vblank_irq)
-				phys->ops.control_vblank_irq(phys, false);
-		}
-	}
-}
-
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_connector *sde_conn;
 	struct sde_kms *sde_kms;
 	enum sde_intf_mode intf_mode;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 	int ret, i = 0;
 
 	if (!drm_enc) {
@@ -3283,6 +3260,10 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		return;
 
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
+
+	drm_crtc = drm_enc->crtc;
+	if (drm_crtc)
+		priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
 
@@ -3334,10 +3315,12 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	/*
 	 * wait for any pending vsync timestamp event to sf
-	 * to ensure vbalnk irq is disabled.
+	 * to ensure vblank irq is disabled.
 	 */
-	if (sde_enc->vblank_enabled)
-		sde_encoder_wait_for_vsync_event_complete(sde_enc);
+	if (drm_crtc && sde_enc->vblank_enabled) {
+		drm_crtc_vblank_off(drm_crtc);
+		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
+	}
 
 	/*
 	 * disable dce after the transfer is complete (for command mode)
@@ -3729,9 +3712,6 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			phys->ops.control_vblank_irq(phys, enable);
 	}
 	sde_enc->vblank_enabled = enable;
-
-	if (!enable)
-		wake_up_all(&sde_enc->vsync_event_wq);
 }
 
 void sde_encoder_register_roi_misr_callback(struct drm_encoder *drm_enc,
@@ -5703,7 +5683,6 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		sde_enc->frame_trigger_mode = FRAME_DONE_WAIT_POSTED_START;
 
 	mutex_init(&sde_enc->rc_lock);
-	init_waitqueue_head(&sde_enc->vsync_event_wq);
 	kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
 	sde_enc->vblank_enabled = false;
