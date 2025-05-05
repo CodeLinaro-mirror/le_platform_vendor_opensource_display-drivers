@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-M := $(shell pwd)
-KBUILD_OPTIONS+= DISPLAY_ROOT=$(M)
+KBUILD_OPTIONS+= DISPLAY_ROOT=$(KERNEL_SRC)/$(M)
 
 all:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) modules $(KBUILD_OPTIONS)
