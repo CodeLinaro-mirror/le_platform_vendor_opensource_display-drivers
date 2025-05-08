@@ -1810,6 +1810,32 @@ static void dp_display_clean(struct dp_display_private *dp)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 }
 
+static void dp_display_set_misr_reset_skip(struct dp_display *dp_display, bool enable)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		DP_ERR("invalid dp display\n");
+		return;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	if (dp->parser && dp->parser->force_connect_mode) {
+		if (IS_BOND_MODE(dp->phy_bond_mode)) {
+			if (dp->bond_primary) {
+				sde_encoder_set_misr_reset_skip(dp->bond_primary->encoder,
+					enable);
+			}
+		} else {
+			if (dp_display->base_connector) {
+				sde_encoder_set_misr_reset_skip(dp_display->base_connector->encoder,
+					enable);
+			}
+		}
+	}
+}
+
 static int dp_display_handle_disconnect(struct dp_display_private *dp, bool fast_mode)
 {
 	int rc;
@@ -1841,9 +1867,12 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool fast
 
 		/* If stream isn't running, started here */
 		if (!dp_display_state_is(DP_STATE_ENABLED) && dp->dp_display.base_connector) {
-			if (!fast_mode)
+			if (!fast_mode) {
+				dp_display_set_misr_reset_skip(&dp->dp_display, true);
 				sde_connector_helper_mode_change_commit(
 						dp->dp_display.base_connector);
+				dp_display_set_misr_reset_skip(&dp->dp_display, false);
+			}
 			else
 				DP_INFO("Skip stream enabling for fast mode\n");
 		}
@@ -2261,8 +2290,11 @@ static void dp_display_connect_work(struct work_struct *work)
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
 
-	if (reset_connector)
+	if (reset_connector) {
+		dp_display_set_misr_reset_skip(&dp->dp_display, true);
 		sde_connector_helper_mode_change_commit(reset_connector);
+		dp_display_set_misr_reset_skip(&dp->dp_display, false);
+	}
 }
 
 static int dp_display_usb_notifier(struct notifier_block *nb,

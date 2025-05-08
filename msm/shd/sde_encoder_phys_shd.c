@@ -842,7 +842,6 @@ static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
 	}
 
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
-	sde_roi_misr_hw_reset(phys_enc);
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
 
 	display = sde_connector_get_display(phys_enc->connector);

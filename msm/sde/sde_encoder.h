@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -202,6 +202,7 @@ enum sde_enc_rc_states {
  * @crtc			pointer to drm_crtc
  * @enabled			indicate if the encoder is enabled
  * @bridge_enabled		indicate if the drm_bridge is enabled
+ * @misr_reset_skip		indicate if misr reset is needed to skip
  * @fal10_veto_override:	software override for micro idle fal10 veto
  * @recovery_events_enabled:	status of hw recovery feature enable by client
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
@@ -284,6 +285,7 @@ struct sde_encoder_virt {
 	struct drm_crtc *crtc;
 	bool enabled;
 	bool bridge_enabled;
+	bool misr_reset_skip;
 
 	bool fal10_veto_override;
 	bool recovery_events_enabled;
@@ -805,5 +807,20 @@ bool sde_encoder_is_bridge_enabled(struct drm_encoder *enc);
  */
 void sde_encoder_set_bridge_enabled(struct drm_encoder *enc,
 		bool enabled);
+
+/**
+ * sde_encoder_is_misr_reset_skip - checks if misr reset is needed to skip
+ * @enc:        Pointer to drm encoder structure
+ * @Return:     true for enabled, false for disabled
+ */
+bool sde_encoder_is_misr_reset_skip(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_set_misr_reset_skip - change enable status of if misr reset is needed to skip
+ * @enc:        Pointer to drm encoder structure
+ * @enabled:    true for enabled, false for disabled
+ */
+void sde_encoder_set_misr_reset_skip(struct drm_encoder *enc,
+                bool enabled);
 
 #endif /* __SDE_ENCODER_H__ */

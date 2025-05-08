@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -6341,5 +6341,36 @@ void sde_encoder_set_bridge_enabled(struct drm_encoder *enc,
 	if (sde_enc->bridge_enabled != enabled) {
 		sde_enc->bridge_enabled = enabled;
 		SDE_INFO("Set enc%d %s\n", DRMID(enc), enabled ? "ENABLED" : "DISABLED");
+	}
+}
+
+bool sde_encoder_is_misr_reset_skip(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	return sde_enc->misr_reset_skip;
+}
+
+void sde_encoder_set_misr_reset_skip(struct drm_encoder *enc,
+		bool enabled)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	if (sde_enc->misr_reset_skip != enabled) {
+		sde_enc->misr_reset_skip = enabled;
+		SDE_INFO("Set enc%d misr reset skip %s\n",
+				DRMID(enc), enabled ? "ENABLED" : "DISABLED");
 	}
 }
