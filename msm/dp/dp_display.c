@@ -3342,6 +3342,11 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_show("[not enabled]");
+		goto end;
+	}
+
 	/*
 	 * Check if the power off sequence was triggered
 	 * by a source initialated action like framework
