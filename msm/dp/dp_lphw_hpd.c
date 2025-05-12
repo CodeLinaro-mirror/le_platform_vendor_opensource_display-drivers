@@ -331,9 +331,12 @@ static enum hrtimer_restart dp_lphw_hpd_gpio_timer_callback(struct hrtimer *hand
 			}
 		} else {
 			/* Should not come here */
-			DP_INFO("DP%d GPIO HPD HIGH debounce not reached %dms hpd %d\n",
+			DP_INFO("DP%d GPIO HPD HIGH debounce not reached %dms hpd %d, restart gpio timer\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff, hpd);
+			hrtimer_start(&lphw_hpd->gpio_timer,
+					ms_to_ktime((u64)(lphw_hpd->parser->gpio_hpd_high_debounce_ms - time_diff)),
+					HRTIMER_MODE_REL);
 		}
 		break;
 
@@ -379,9 +382,12 @@ static enum hrtimer_restart dp_lphw_hpd_gpio_timer_callback(struct hrtimer *hand
 			}
 		} else {
 			/* Should not come here */
-			DP_INFO("DP%d GPIO HPD LOW debounce not reached %dms hpd %d\n",
+			DP_INFO("DP%d GPIO HPD LOW debounce not reached %dms hpd %d, restart gpio timer\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff, hpd);
+			hrtimer_start(&lphw_hpd->gpio_timer,
+					ms_to_ktime((u64)(lphw_hpd->parser->gpio_hpd_low_debounce_ms - time_diff)),
+					HRTIMER_MODE_REL);
 		}
 		break;
 	}
