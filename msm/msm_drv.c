@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -99,6 +99,7 @@
 
 static DEFINE_MUTEX(msm_release_lock);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -113,6 +114,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 	if (priv->fbdev)
 		drm_fb_helper_hotplug_event(priv->fbdev);
 }
+#endif
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
@@ -163,7 +165,9 @@ int msm_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.output_poll_changed = msm_fb_output_poll_changed,
+#endif
 	.atomic_check = msm_atomic_check,
 	.atomic_commit = msm_atomic_commit,
 	.atomic_state_alloc = msm_atomic_state_alloc,
@@ -371,6 +375,7 @@ u32 msm_readl(const void __iomem *addr)
 	return val;
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 static irqreturn_t msm_irq(int irq, void *arg)
 {
 	struct drm_device *dev = arg;
@@ -381,6 +386,7 @@ static irqreturn_t msm_irq(int irq, void *arg)
 
 	return kms->funcs->irq(kms);
 }
+#endif
 
 static void msm_irq_preinstall(struct drm_device *dev)
 {
@@ -415,9 +421,13 @@ static int msm_irq_install(struct drm_device *dev, unsigned int irq)
 
 	msm_irq_preinstall(dev);
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	// No hardware irq mapped to guest VM
+#else
 	ret = request_irq(irq, msm_irq, 0, dev->driver->name, dev);
 	if (ret)
 		return ret;
+#endif
 
 	ret = msm_irq_postinstall(dev);
 	if (ret) {
@@ -575,6 +585,10 @@ static int get_mdp_ver(struct platform_device *pdev)
 	},
 	{
 		.compatible = "qcom,sde-kms",
+		.data	= (void	*)KMS_SDE,
+	},
+	{
+		.compatible = "qcom,sde-kms-virt",
 		.data	= (void	*)KMS_SDE,
 	},
 	{},
@@ -1131,33 +1145,6 @@ static void msm_preclose(struct drm_device *dev, struct drm_file *file)
 		kms->funcs->preclose(kms, file);
 }
 
-static void msm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_file_private *ctx = file->driver_priv;
-	struct msm_kms *kms = priv->kms;
-
-	if (!kms)
-		return;
-
-	if (kms->funcs && kms->funcs->postclose)
-		kms->funcs->postclose(kms, file);
-
-	mutex_lock(&dev->struct_mutex);
-	if (ctx == priv->lastctx)
-		priv->lastctx = NULL;
-	mutex_unlock(&dev->struct_mutex);
-
-	mutex_lock(&ctx->power_lock);
-	if (ctx->enable_refcnt) {
-		SDE_EVT32(ctx->enable_refcnt);
-		pm_runtime_put_sync(dev->dev);
-	}
-	mutex_unlock(&ctx->power_lock);
-
-	context_close(ctx);
-}
-
 static void msm_lastclose(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -1228,6 +1215,38 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+}
+
+static void msm_postclose(struct drm_device *dev, struct drm_file *file)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_file_private *ctx = file->driver_priv;
+	struct msm_kms *kms = priv->kms;
+
+	if (!kms)
+		return;
+
+	if (kms->funcs && kms->funcs->postclose)
+		kms->funcs->postclose(kms, file);
+
+	mutex_lock(&dev->struct_mutex);
+	if (ctx == priv->lastctx)
+		priv->lastctx = NULL;
+	mutex_unlock(&dev->struct_mutex);
+
+	mutex_lock(&ctx->power_lock);
+	if (ctx->enable_refcnt) {
+		SDE_EVT32(ctx->enable_refcnt);
+		pm_runtime_put_sync(dev->dev);
+	}
+	mutex_unlock(&ctx->power_lock);
+
+	context_close(ctx);
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (atomic_read(&dev->open_count) == 1)
+		msm_lastclose(dev);
+#endif
 }
 
 /*
@@ -1899,11 +1918,16 @@ static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
 	.release            = msm_release,
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	.fop_flags          = FOP_UNSIGNED_OFFSET,
+#endif
 	.unlocked_ioctl     = drm_ioctl,
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
 	.read               = drm_read,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.llseek             = no_llseek,
+#endif
 	.mmap               = msm_gem_mmap,
 };
 
@@ -1914,7 +1938,9 @@ static struct drm_driver msm_driver = {
 				DRIVER_MODESET,
 	.open               = msm_open,
 	.postclose          = msm_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_lastclose,
+#endif
 	.release	    = msm_drm_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
@@ -2007,13 +2033,17 @@ static int msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
+	int dpu_idx = ddev->primary->index;
 
 	DBG("");
+
+	if (priv->kms)
+		dpu_idx = DPUID(to_sde_kms(priv->kms));
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
 	else
-		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
+		sde_power_resource_enable(&priv->phandle, false, dpu_idx);
 
 	return 0;
 }
@@ -2022,14 +2052,18 @@ static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
+	int dpu_idx = ddev->primary->index;
 	int ret;
 
 	DBG("");
 
+	if (priv->kms)
+		dpu_idx = DPUID(to_sde_kms(priv->kms));
+
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
 	else
-		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
+		ret = sde_power_resource_enable(&priv->phandle, true, dpu_idx);
 
 	return ret;
 }
@@ -2128,11 +2162,11 @@ static int add_display_components(struct device *dev,
 	struct device *mdp_dev = NULL;
 	struct device_node *node;
 	int ret;
+	struct device_node *np = dev->of_node;
+	unsigned int i;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")) {
-		struct device_node *np = dev->of_node;
-		unsigned int i;
-
+	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")
+		|| of_device_is_compatible(dev->of_node, "qcom,sde-kms-virt")) {
 		for (i = 0; ; i++) {
 			node = of_parse_phandle(np, "connectors", i);
 			if (!node)
@@ -2377,6 +2411,13 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (!msm_hyp_get_kms()) {
+		DRM_DEBUG("Wait for MSM_HYP KMS\n");
+		return -EPROBE_DEFER;
+	}
+#endif
+
 	ret = msm_drm_component_dependency_check(&pdev->dev);
 	if (ret)
 		return ret;
@@ -2435,6 +2476,7 @@ static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdp4", .data = (void *)KMS_MDP4 },
 	{ .compatible = "qcom,mdss", .data = (void *)KMS_MDP5 },
 	{ .compatible = "qcom,sde-kms", .data = (void *)KMS_SDE },
+	{ .compatible = "qcom,sde-kms-virt", .data = (void *)KMS_SDE },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dt_match);
@@ -2471,6 +2513,7 @@ static int __init msm_drm_register(void)
 	msm_hdmi_register();
 	sde_shd_register();
 	msm_lease_drm_register();
+	msm_hyp_register();
 	return 0;
 }
 
@@ -2491,6 +2534,7 @@ static void __exit msm_drm_unregister(void)
 	sde_cesta_unregister();
 	sde_rsc_unregister();
 	sde_shd_unregister();
+	msm_hyp_unregister();
 	platform_driver_unregister(&msm_platform_driver);
 }
 

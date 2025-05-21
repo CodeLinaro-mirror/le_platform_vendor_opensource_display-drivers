@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -59,6 +59,7 @@
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
+#define SDE_HW_VER_C01	SDE_HW_VER(12, 1, 0) /* nord */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
@@ -94,6 +95,7 @@
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
+#define IS_NORD_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C01)
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
@@ -373,6 +375,7 @@ enum {
  * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
  * @SDE_SSPP_SCALER_QSEED_EBS Edge Bleed Supresison support in QSEED block
  * @SDE_SSPP_SCALER_QSEED_ADE Adaptive DE support in QSEED block
+ * @SDE_SSPP_LOCAL_FLUSH     Local flush support for each RECT
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -420,6 +423,9 @@ enum {
 	SDE_SSPP_REC_SWI_SEPARATION,
 	SDE_SSPP_SCALER_QSEED_EBS,
 	SDE_SSPP_SCALER_QSEED_ADE,
+	SDE_SSPP_LOCAL_FLUSH,
+	SDE_SSPP_SMART_DMA_REC0_ONLY,
+	SDE_SSPP_SMART_DMA_REC1_ONLY,
 	SDE_SSPP_MAX
 };
 
@@ -464,6 +470,7 @@ enum {
  * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
  * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
  * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
+ * @SDE_MIXER_LOCAL_FLUSH     Layer mixer supports per blend stage local flush
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -482,6 +489,7 @@ enum {
 	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_CAC_PRIMARY,
 	SDE_MIXER_CAC_LB,
+	SDE_MIXER_LOCAL_FLUSH,
 	SDE_MIXER_MAX
 };
 
@@ -522,6 +530,7 @@ enum {
  * @SDE_DSPP_AIQE_DITHER     AIQE Dither Block
  * @SDE_DSPP_AIQE_WRAPPER    AIQE Wrapper Block
  * @SDE_DSPP_AI_SCALER       AI Scaler block
+ * @SDE_DSPP_LITE            DSPP-Lite, stripe down version
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -548,6 +557,7 @@ enum {
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
+	SDE_DSPP_LITE,
 	SDE_DSPP_MAX
 };
 
@@ -674,6 +684,8 @@ enum {
  *                              of active bits for pipes and layer mixers
  * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
  * @SDE_CTL_REG_DMA             CTL supports REG_DMA block
+ * @SDE_CTL_REG_DMA_VQ          CTL supports REG_DMA virtual queue block for HW virtualization
+ * @SDE_CTL_LOCAL_FLUSH         CTL supports LM/SSPP/MISR local flush
  * @SDE_CTL_MAX
  */
 enum {
@@ -689,6 +701,8 @@ enum {
 	SDE_CTL_NO_LAYER_EXT,
 	SDE_CTL_CESTA_FLUSH,
 	SDE_CTL_REG_DMA,
+	SDE_CTL_REG_DMA_VQ,
+	SDE_CTL_LOCAL_FLUSH,
 	SDE_CTL_MAX
 };
 
@@ -902,7 +916,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
- * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
+ * @SDE_FEATURE_HW_VIRTUAL       Multi-VM HW virtualization supported
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -955,6 +969,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MIXER_OP_V1,
+	SDE_FEATURE_HW_VIRTUAL,
 	SDE_FEATURE_MAX
 };
 
@@ -966,6 +981,8 @@ enum sde_mdss_features {
  * @len:               length of hardware block
  * @features           bit mask identifying sub-blocks/features
  * @perf_features   bit mask identifying performance sub-blocks/features
+ * @virtual            para-virtualized hardware, managed by master VM
+ * @fixed_ctl_id       Fixed controller id, for HW virtualization
  */
 #define SDE_HW_BLK_INFO \
 	char name[SDE_HW_BLK_NAME_LEN]; \
@@ -976,7 +993,9 @@ enum sde_mdss_features {
 		unsigned long features; \
 		u64 features_ext; \
 	}; \
-	unsigned long perf_features
+	unsigned long perf_features; \
+	bool virtual; \
+	u32 fixed_ctl_id
 
 /**
  * MACRO SDE_HW_SUBBLK_INFO - information of HW sub-block inside SDE
@@ -1250,6 +1269,7 @@ struct sde_sspp_sub_blks {
  * @blendstage_base:        Blend-stage register base offset
  * @gc: gamma correction block
  * @nlayer: noise layer block
+ * @zpos_off:               Z-order offset
  */
 struct sde_lm_sub_blks {
 	u32 maxwidth;
@@ -1257,6 +1277,7 @@ struct sde_lm_sub_blks {
 	u32 blendstage_base[MAX_BLOCKS];
 	struct sde_pp_blk gc;
 	struct sde_pp_blk nlayer;
+	u32 zpos_off;
 };
 
 /**
@@ -1506,9 +1527,13 @@ struct sde_uidle_cfg {
  * @id:                index identifying this block
  * @base:              register base offset to mdss
  * @features           bit mask identifying sub-blocks/features
+ * @fixed_enc_id:      ID of encoder for fixed resource reservation, used in HW virtualzation
+ * @vq_idx:            LUTDMA VQ index
  */
 struct sde_ctl_cfg {
 	SDE_HW_BLK_INFO;
+	int fixed_enc_id;
+	int vq_idx;
 };
 
 /**
@@ -1520,6 +1545,7 @@ struct sde_ctl_cfg {
  * @xin_id:            bus client identifier
  * @clk_ctrl           clock control identifier
  * @type               sspp type identifier
+ * @possible_crtc               sspp type identifier
  */
 struct sde_sspp_cfg {
 	SDE_HW_BLK_INFO;
@@ -1527,6 +1553,9 @@ struct sde_sspp_cfg {
 	u32 xin_id;
 	enum sde_clk_ctrl_type clk_ctrl;
 	u32 type;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	u32 possible_crtc;
+#endif
 };
 
 /**
@@ -1542,6 +1571,7 @@ struct sde_sspp_cfg {
  * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
  * @parent_mixer_id:   ID of parent mixer, used in dual pass commit
+ * @fixed_enc_id:      ID of encoder for fixed resource reservation, used in HW virtualzation
  */
 struct sde_lm_cfg {
 	SDE_HW_BLK_INFO;
@@ -1553,6 +1583,7 @@ struct sde_lm_cfg {
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
 	u32 parent_mixer_id;
+	int fixed_enc_id;
 };
 
 /**
@@ -1877,12 +1908,37 @@ struct sde_reg_dma_blk_info {
 };
 
 /**
+ * enum sde_reg_dma_vq - defines reg dma VQ ID
+ */
+enum sde_reg_dma_vq {
+	REG_DMA_VQ_0 = 1,
+	REG_DMA_VQ_1,
+	REG_DMA_VQ_2,
+	REG_DMA_VQ_3,
+	REG_DMA_VQ_4,
+	REG_DMA_VQ_5,
+	REG_DMA_VQ_6,
+	REG_DMA_VQ_7,
+	REG_DMA_VQ_8,
+	REG_DMA_VQ_9,
+	REG_DMA_VQ_10,
+	REG_DMA_VQ_11,
+	REG_DMA_VQ_12,
+	REG_DMA_VQ_13,
+	REG_DMA_VQ_14,
+	REG_DMA_VQ_15,
+	REG_DMA_VQ_MAX,
+};
+
+/**
  * struct sde_reg_dma_cfg - overall config struct of lut dma blocks.
  * @reg_dma_blks       Reg DMA blk info for each possible block type
+ * @reg_dma_vq_blks    Reg DMA blk info for each possible block type for each VQ
  * @version            version of lutdma hw blocks
  * @trigger_sel_off    offset to trigger select registers of lutdma
  * @broadcast_disabled flag indicating if broadcast usage should be avoided
  * @split_vbif_supported indicates if VBIF clock split is supported
+ * @vq_supported       indicates if VQ is supported
  * @xin_id             VBIF xin client-id for LUTDMA
  * @vbif_idx           VBIF id (RT/NRT)
  * @base_off           Base offset of LUTDMA from the MDSS root
@@ -1890,14 +1946,18 @@ struct sde_reg_dma_blk_info {
  */
 struct sde_reg_dma_cfg {
 	struct sde_reg_dma_blk_info reg_dma_blks[REG_DMA_TYPE_MAX];
+	struct sde_reg_dma_blk_info reg_dma_vq_blks[REG_DMA_VQ_MAX][REG_DMA_TYPE_MAX];
 	u32 version;
 	u32 trigger_sel_off;
 	u32 broadcast_disabled;
 	u32 split_vbif_supported;
+	u32 vq_supported;
 	u32 xin_id;
 	u32 vbif_idx;
 	u32 base_off;
 	enum sde_clk_ctrl_type clk_ctrl;
+	u32 vq_num;
+	u32 vq_off;
 };
 
 /**
@@ -1933,6 +1993,25 @@ struct sde_sc_cfg {
 	int llcc_uid;
 	int llcc_scid;
 	size_t llcc_slice_size;
+};
+
+/**
+ * struct sde_vatran_cfg - information of VA_TRAN blocks
+ * @id                 enum identifying this block
+ * @base               register offset of this block
+ * @len:               length of hardware block
+ * @features           bit mask identifying sub-blocks/features
+ * @base_off           Base offset of VA_TRAN from the MDSS root
+ * @num_vm             number of VMs
+ * @vm0_slots          number of slots for VM0
+ * @vmx_slots          number of slots for reset VMs
+ */
+struct sde_vatran_cfg {
+	SDE_HW_BLK_INFO;
+	u32 base_off;
+	u32 num_vm;
+	u32 vm0_slots;
+	u32 vmx_slots;
 };
 
 /**
@@ -2206,6 +2285,8 @@ struct sde_mdss_cfg {
 
 	u32 reg_dma_count;
 	struct sde_reg_dma_cfg dma_cfg;
+	u32 vatran_count;
+	struct sde_vatran_cfg vatran;
 	u32 ad_count;
 	u32 ltm_count;
 	u32 rc_count;
@@ -2362,4 +2443,23 @@ static inline bool sde_hw_sspp_multirect_enabled(const struct sde_sspp_cfg *cfg)
 			 test_bit(SDE_SSPP_SMART_DMA_V2, &cfg->features) ||
 			 test_bit(SDE_SSPP_SMART_DMA_V2p5, &cfg->features);
 }
+
+/**
+ * sde_hw_sspp_multirect_rec0_only - check multirect only REC0 enabled for the sspp
+ * @cfg:          pointer to sspp cfg
+ */
+static inline bool sde_hw_sspp_multirect_rec0_only(const struct sde_sspp_cfg *cfg)
+{
+	return test_bit(SDE_SSPP_SMART_DMA_REC0_ONLY, &cfg->features);
+}
+
+/**
+ * sde_hw_sspp_multirect_rec1_only - check multirect only REC1 enabled for the sspp
+ * @cfg:          pointer to sspp cfg
+ */
+static inline bool sde_hw_sspp_multirect_rec1_only(const struct sde_sspp_cfg *cfg)
+{
+	return test_bit(SDE_SSPP_SMART_DMA_REC1_ONLY, &cfg->features);
+}
+
 #endif /* _SDE_HW_CATALOG_H */

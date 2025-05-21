@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -11,6 +11,8 @@
 
 #include "msm_kms.h"
 #include "sde_hw_top.h"
+#include "sde_hw_ctl.h"
+#include "sde_hw_lm.h"
 
 #define SINGLE_CTL	1
 #define DUAL_CTL	2
@@ -323,6 +325,13 @@ void sde_rm_init_hw_iter(
  * @Return: true on match found, false on no match found
  */
 bool sde_rm_get_hw(struct sde_rm *rm, struct sde_rm_hw_iter *iter);
+
+/**
+ * sde_rm_get_hw_iter_id - retrieve iterator HW object id.
+ * @iter: iterator object
+ * @Return: HW object id
+ */
+uint32_t sde_rm_get_hw_iter_id(struct sde_rm_hw_iter *i);
 
 /**
  * sde_rm_request_hw_blk - retrieve the requested hardware block

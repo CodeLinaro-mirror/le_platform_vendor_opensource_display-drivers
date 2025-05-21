@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -45,6 +45,7 @@
 #include "sde_hw_dsc.h"
 #include "sde_hw_vdc.h"
 #include "sde_crtc.h"
+#include "sde_plane.h"
 #include "sde_trace.h"
 #include "sde_core_irq.h"
 #include "sde_hw_top.h"
@@ -425,9 +426,11 @@ static void sde_configure_qdss(struct sde_encoder_virt *sde_enc,
 
 	sde_enc->qdss_status = enable;
 
-	phys->hw_mdptop->ops.set_mdp_hw_events(phys->hw_mdptop,
-						sde_enc->qdss_status);
-	hw_qdss->ops.enable_qdss_events(hw_qdss, sde_enc->qdss_status);
+	if (phys->hw_mdptop->ops.set_mdp_hw_events)
+		phys->hw_mdptop->ops.set_mdp_hw_events(phys->hw_mdptop,
+							sde_enc->qdss_status);
+	if (hw_qdss->ops.enable_qdss_events)
+		hw_qdss->ops.enable_qdss_events(hw_qdss, sde_enc->qdss_status);
 }
 
 static int _sde_encoder_wait_timeout(int32_t drm_id, int32_t hw_id,
@@ -1431,7 +1434,7 @@ static int sde_encoder_virt_atomic_check(
 		sde_conn_state->msm_mode.private_flags,
 		old_top, drm_mode_vrefresh(adj_mode), adj_mode->hdisplay,
 		adj_mode->vdisplay, adj_mode->htotal, adj_mode->vtotal, ret,
-		DPUID(drm_enc->dev));
+		DPUID(sde_kms));
 
 	return ret;
 }
@@ -1930,10 +1933,17 @@ static int _sde_encoder_update_rsc_client(
 void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms = NULL;
 	int i;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
 		return;
 	}
 
@@ -1949,7 +1959,7 @@ void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 		if (phys && phys->ops.dynamic_irq_control)
 			phys->ops.dynamic_irq_control(phys, enable);
 	}
-	sde_kms_cpu_vote_for_irq(sde_encoder_get_kms(drm_enc), enable);
+	sde_kms_cpu_vote_for_irq(sde_kms, enable);
 
 }
 
@@ -3339,7 +3349,10 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 		if (!sde_rm_request_hw_blk(&sde_kms->rm, &request_hw))
 			break;
 		pp = to_sde_hw_pingpong(request_hw.hw);
-		features = pp->ops.get_hw_caps(pp);
+		if (pp->ops.get_hw_caps)
+			features = pp->ops.get_hw_caps(pp);
+		else
+			features = 0;
 
 		if (test_bit(SDE_PINGPONG_DSC, &features))
 			sde_enc->hw_dsc_pp[i] = pp;
@@ -3581,12 +3594,14 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 					phys->hw_intf->ops.bind_pingpong_blk(
 						phys->hw_intf, true,
 						phys->hw_pp->idx);
-				phys->hw_ctl->ops.update_bitmask(phys->hw_ctl,
-						SDE_HW_FLUSH_INTF, phys->hw_intf->idx, 1);
-				if (phys->hw_pp->merge_3d)
+				if (phys->hw_ctl->ops.update_bitmask) {
 					phys->hw_ctl->ops.update_bitmask(phys->hw_ctl,
-						SDE_HW_FLUSH_MERGE_3D,
-						phys->hw_pp->merge_3d->idx, 1);
+							SDE_HW_FLUSH_INTF, phys->hw_intf->idx, 1);
+					if (phys->hw_pp->merge_3d)
+						phys->hw_ctl->ops.update_bitmask(phys->hw_ctl,
+							SDE_HW_FLUSH_MERGE_3D,
+							phys->hw_pp->merge_3d->idx, 1);
+				}
 			}
 		}
 	}
@@ -4315,7 +4330,8 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 	if (phys_enc->ops.is_master && phys_enc->ops.is_master(phys_enc))
 		_sde_encoder_cesta_update(&sde_enc->base, SDE_PERF_DISABLE_COMMIT);
 
-	ctl->ops.reset(ctl);
+	if (ctl->ops.reset)
+		ctl->ops.reset(ctl);
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
 
 	if (wb_enc) {
@@ -4388,11 +4404,15 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, ctl);
 
 	sde_crtc_disable_cp_features(sde_enc->base.crtc);
-	ctl->ops.get_pending_flush(ctl, &cfg);
+	if (ctl->ops.get_pending_flush)
+		ctl->ops.get_pending_flush(ctl, &cfg);
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
-	ctl->ops.trigger_flush(ctl);
-	ctl->ops.trigger_start(ctl);
-	ctl->ops.clear_pending_flush(ctl);
+	if (ctl->ops.trigger_flush)
+		ctl->ops.trigger_flush(ctl);
+	if (ctl->ops.trigger_start)
+		ctl->ops.trigger_start(ctl);
+	if (ctl->ops.clear_pending_flush)
+		ctl->ops.clear_pending_flush(ctl);
 }
 
 void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc)
@@ -4400,12 +4420,15 @@ void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc)
 	struct sde_hw_ctl *ctl = phys_enc->hw_ctl;
 	struct sde_ctl_flush_cfg cfg;
 
-	ctl->ops.reset(ctl);
+	if (ctl->ops.reset)
+		ctl->ops.reset(ctl);
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
 	ctl->ops.get_pending_flush(ctl, &cfg);
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
-	ctl->ops.trigger_flush(ctl);
-	ctl->ops.trigger_start(ctl);
+	if (ctl->ops.trigger_flush)
+		ctl->ops.trigger_flush(ctl);
+	if (ctl->ops.trigger_start)
+		ctl->ops.trigger_start(ctl);
 }
 
 static enum sde_intf sde_encoder_get_intf(struct sde_mdss_cfg *catalog,
@@ -4415,7 +4438,7 @@ static enum sde_intf sde_encoder_get_intf(struct sde_mdss_cfg *catalog,
 
 	for (i = 0; i < catalog->intf_count; i++) {
 		if (catalog->intf[i].type == type
-		    && catalog->intf[i].controller_id == controller_id) {
+		    && catalog->intf[i].controller_id + INTF_0 == controller_id) {
 			return catalog->intf[i].id;
 		}
 	}
@@ -4619,7 +4642,7 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 
 	SDE_ATRACE_BEGIN("encoder_underrun_callback");
 	atomic_inc(&phy_enc->underrun_cnt);
-	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt), DPUID(drm_enc->dev));
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->underrun_cnt), DPUID(phy_enc->sde_kms));
 	if (sde_enc->cur_master &&
 			sde_enc->cur_master->ops.get_underrun_line_count)
 		sde_enc->cur_master->ops.get_underrun_line_count(
@@ -5038,11 +5061,11 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask, pend_ret_fence_cnt,
 				sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
-				DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE1);
+				DPUID(phys->sde_kms), SDE_EVTLOG_FUNC_CASE1);
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
 				pend_ret_fence_cnt, sde_enc->cesta_reset_intf_master,
-				sde_enc->intf_master, DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE2);
+				sde_enc->intf_master, DPUID(phys->sde_kms), SDE_EVTLOG_FUNC_CASE2);
 	}
 }
 
@@ -5114,7 +5137,7 @@ void sde_encoder_helper_trigger_start(struct sde_encoder_phys *phys_enc)
 	ctl = phys_enc->hw_ctl;
 	if (ctl && ctl->ops.trigger_start) {
 		ctl->ops.trigger_start(ctl);
-		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0, DPUID(phys_enc->parent->dev));
+		SDE_EVT32(DRMID(phys_enc->parent), ctl->idx - CTL_0, DPUID(phys_enc->sde_kms));
 	}
 }
 
@@ -5304,8 +5327,6 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 
 		if (!phys->ops.needs_single_flush ||
 				!phys->ops.needs_single_flush(phys)) {
-			if (config_changed && ctl->ops.reg_dma_flush)
-				ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
 			_sde_encoder_trigger_flush(&sde_enc->base, phys, 0x0,
 					config_changed);
 		} else if (ctl->ops.get_pending_flush) {
@@ -5316,8 +5337,6 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	/* for split flush, combine pending flush masks and send to master */
 	if (pending_flush.pending_flush_mask && sde_enc->cur_master) {
 		ctl = sde_enc->cur_master->hw_ctl;
-		if (config_changed && ctl->ops.reg_dma_flush)
-			ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
 		_sde_encoder_trigger_flush(&sde_enc->base, sde_enc->cur_master,
 						&pending_flush,
 						config_changed);
@@ -5570,7 +5589,10 @@ static void _sde_encoder_avoid_prog_fetch_region(struct sde_encoder_phys *phys_e
 	u32 line_count, buffer_lines, cut_off_lines;
 
 	buffer_time_us = DEVIATION_NS / 1000;
-	line_count = phys_enc->hw_intf->ops.get_line_count(phys_enc->hw_intf);
+	if (phys_enc->hw_intf->ops.get_line_count)
+		line_count = phys_enc->hw_intf->ops.get_line_count(phys_enc->hw_intf);
+	else
+		line_count = 0;
 	panel_vsync_diff_us = buffer_time_us + phys_enc->pf_time_in_us;
 	buffer_lines = DIV_ROUND_UP(buffer_time_us *
 		phys_enc->cached_mode.vtotal * sde_enc->mode_info.frame_rate, 1000000);
@@ -5663,11 +5685,14 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		sde_conn->vrr_cmd_state, sde_conn->last_vhm_cmd);
 
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, phys_enc->hw_ctl);
-	ctl->ops.get_pending_flush(ctl, &cfg);
+	if (ctl->ops.get_pending_flush)
+		ctl->ops.get_pending_flush(ctl, &cfg);
 	ctl->flush.pending_flush_mask |= BIT(17);
 	sde_cesta_poll_handshake(sde_enc->cesta_client);
-	ctl->ops.trigger_flush(ctl);
-	ctl->ops.clear_pending_flush(ctl);
+	if (ctl->ops.trigger_flush)
+		ctl->ops.trigger_flush(ctl);
+	if (ctl->ops.clear_pending_flush)
+		ctl->ops.clear_pending_flush(ctl);
 
 	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 			phys_enc->hw_intf->ops.avr_trigger)
@@ -6732,7 +6757,7 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
 
 	SDE_DEBUG_ENC(sde_enc, "\n");
-	SDE_EVT32(DRMID(drm_enc), DPUID(drm_enc->dev));
+	SDE_EVT32(DRMID(drm_enc), DPUID(sde_kms));
 
 	cur_master = sde_enc->cur_master;
 	is_cmd_mode = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
@@ -6959,6 +6984,15 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		struct drm_framebuffer *fb)
 {
 	struct drm_encoder *drm_enc;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct sde_encoder_virt *sde_enc;
+	struct drm_plane *plane;
+	struct drm_plane_state *old_plane_state, *new_plane_state;
+	struct sde_plane *psde;
+	struct sde_plane_state *pstate;
+	struct drm_plane_state *state;
+	int i;
+#endif
 	struct sde_hw_mixer_cfg mixer;
 	struct sde_rm_hw_iter lm_iter;
 	bool lm_valid = false;
@@ -7018,6 +7052,51 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 
 		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_active_pipes)
 			phys_enc->hw_ctl->ops.set_active_pipes(phys_enc->hw_ctl, NULL);
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		sde_enc = to_sde_encoder_virt(drm_enc);
+
+		/* Clear per plane active_fectch_pipe and active_pipe */
+		if (sde_enc && sde_enc->old_state) {
+			for_each_oldnew_plane_in_state(sde_enc->old_state, plane, old_plane_state, new_plane_state, i) {
+				bool disabling;
+
+				/* Clear per plane active_fectch_pipe and active_pipe */
+				disabling = drm_atomic_plane_disabling(old_plane_state,
+								       new_plane_state);
+				if(disabling) {
+
+					state = plane->state;
+					if (!state)
+						continue;
+
+					psde = to_sde_plane(plane);
+					pstate = to_sde_plane_state(state);
+
+					/* Adding/removing plane requires global flush */
+					if (psde->pipe_hw->ops.set_flush_type)
+						psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+
+					/* Make sure switch to global flush */
+					SDE_DEBUG("plane %d %s sspp local_flush  rect %d\n", DRMID(&psde->base), __func__, pstate->multirect_index);
+					if (psde->pipe_hw->ops.local_flush)
+						psde->pipe_hw->ops.local_flush(psde->pipe_hw, pstate->multirect_index);
+					if (phys_enc->hw_ctl->ops.force_global_flush)
+						phys_enc->hw_ctl->ops.force_global_flush(phys_enc->hw_ctl);
+
+					if (psde->pipe_hw->ops.set_active_fetch_pipe)
+						psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+								pstate->multirect_index, false);
+
+					if (psde->pipe_hw->ops.set_active_pipe)
+						psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+								pstate->multirect_index, false);
+
+					sde_plane_ctl_flush(plane, phys_enc->hw_ctl, true);
+				}
+			}
+		}
+#endif
 	}
 
 	if (!lm_valid) {
@@ -7060,8 +7139,9 @@ int sde_encoder_update_periph_flush(struct drm_encoder *drm_enc)
 
 		if (phys && phys->hw_ctl) {
 			ctl = phys->hw_ctl;
-			ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
-				phys->hw_intf->idx, 1);
+			if (ctl->ops.update_bitmask)
+				ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
+					phys->hw_intf->idx, 1);
 			SDE_EVT32(phys->hw_intf->idx);
 		}
 	}
@@ -7702,6 +7782,18 @@ static int sde_encoder_virt_add_phys_encs(
 		sde_enc->phys_vid_encs[sde_enc->num_phys_encs] = enc;
 	}
 
+	if (display_caps & MSM_DISPLAY_HYPERVISOR_MODE) {
+		enc = sde_encoder_phys_hyp_init(params);
+
+		if (IS_ERR_OR_NULL(enc)) {
+			SDE_ERROR_ENC(sde_enc, "failed to init hyp enc: %ld\n",
+				PTR_ERR(enc));
+			return !enc ? -EINVAL : PTR_ERR(enc);
+		}
+
+		sde_enc->phys_hyp_encs[sde_enc->num_phys_encs] = enc;
+	}
+
 	if (display_caps & MSM_DISPLAY_CAP_CMD_MODE) {
 		enc = sde_encoder_phys_cmd_init(params);
 
@@ -7719,6 +7811,9 @@ static int sde_encoder_virt_add_phys_encs(
 	else if (disp_info->curr_panel_mode == MSM_DISPLAY_CMD_MODE)
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_cmd_encs[sde_enc->num_phys_encs];
+	else if (disp_info->curr_panel_mode == MSM_DISPLAY_HYP_MODE)
+		sde_enc->phys_encs[sde_enc->num_phys_encs] =
+			sde_enc->phys_hyp_encs[sde_enc->num_phys_encs];
 	else
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_lb_encs[sde_enc->num_phys_encs];
@@ -7795,8 +7890,6 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
 	atomic_set(&sde_enc->vsync_cnt, 0);
-
-	SDE_DEBUG("\n");
 
 	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI) {
 		*drm_enc_mode = DRM_MODE_ENCODER_DSI;
@@ -8073,6 +8166,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	sde_enc = kzalloc(sizeof(*sde_enc), GFP_KERNEL);
 	if (!sde_enc) {
+		SDE_ERROR("Kzalloc failed\n");
 		ret = -ENOMEM;
 		goto fail;
 	}
@@ -8083,8 +8177,10 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
 			&drm_enc_mode);
-	if (ret)
+	if (ret) {
+		SDE_ERROR("sde_encoder_setup_display failed, rc = %d\n", ret);
 		goto fail;
+	}
 
 	sde_enc->cur_master = NULL;
 	spin_lock_init(&sde_enc->enc_spinlock);
@@ -8108,7 +8204,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 				SDE_RSC_PRIMARY_DISP_CLIENT : SDE_RSC_EXTERNAL_DISP_CLIENT;
 		snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
 
-		sde_enc->rsc_client = sde_rsc_client_create(DPUID(dev), name, client_type,
+		sde_enc->rsc_client = sde_rsc_client_create(DPUID(sde_kms), name, client_type,
 							    intf_index + 1);
 		if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
 			SDE_DEBUG("sde rsc client create failed :%ld\n",

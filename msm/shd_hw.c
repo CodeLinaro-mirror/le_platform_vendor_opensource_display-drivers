@@ -214,7 +214,7 @@ static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
 	if (stage == SDE_STAGE_BASE || stage > sblk->maxblendstages)
 		return -EINVAL;
 
-	return sblk->blendstage_base[stage - SDE_STAGE_0];
+	return sblk->blendstage_base[stage + sblk->zpos_off - SDE_STAGE_0];
 }
 
 static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx, enum sde_lm lm,
@@ -353,23 +353,15 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	if (hw_ctl->cwb_enable) {
 		SDE_REG_WRITE(c, CTL_WB_ACTIVE, BIT(2));
 
-		tmp = SDE_REG_READ(c, CTL_MERGE_3D_ACTIVE);
-		tmp |= hw_ctl->merge_3d_active;
-		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_MERGE_3D_ACTIVE, hw_ctl->merge_3d_active, hw_ctl->merge_3d_active);
 
-		tmp = SDE_REG_READ(c, CTL_CWB_ACTIVE);
-		tmp |= hw_ctl->cwb_active;
-		SDE_REG_WRITE(c, CTL_CWB_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_CWB_ACTIVE, hw_ctl->cwb_active, hw_ctl->cwb_active);
 	} else {
 		SDE_REG_WRITE(c, CTL_WB_ACTIVE, 0x0);
 
-		tmp = SDE_REG_READ(c, CTL_MERGE_3D_ACTIVE);
-		tmp &= ~hw_ctl->merge_3d_active;
-		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_MERGE_3D_ACTIVE, hw_ctl->merge_3d_active, 0);
 
-		tmp = SDE_REG_READ(c, CTL_CWB_ACTIVE);
-		tmp &= ~hw_ctl->cwb_active;
-		SDE_REG_WRITE(c, CTL_CWB_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_CWB_ACTIVE, hw_ctl->cwb_active, 0);
 	}
 
 	hw_ctl->cwb_changed = false;
@@ -507,7 +499,7 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
 	int stage_off, i;
-	u32 reset = BIT(16), val;
+	u32 val;
 	int start, end;
 
 	if (!ctx)
@@ -517,7 +509,6 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 
 	start = SDE_STAGE_0 + hw_lm->range.start;
 	end = start + hw_lm->range.size;
-	reset = ~reset;
 
 	for (i = start; i < end; i++) {
 		stage_off = _stage_offset(ctx, i);
@@ -525,19 +516,19 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 			return;
 
 		if (hw_lm->cfg[i].dim_layer_enable) {
-			hw_lm->orig->ops.setup_dim_layer(ctx,
-				&hw_lm->cfg[i].dim_layer);
+			if (hw_lm->orig->ops.setup_dim_layer)
+				hw_lm->orig->ops.setup_dim_layer(ctx,
+					&hw_lm->cfg[i].dim_layer);
 		} else {
-			val = SDE_REG_READ(c, LM_BLEND0_OP + stage_off);
-			val &= reset;
-			SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+			SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(16), 0);
 		}
 
 		if (hw_lm->cfg[i].dirty) {
-			hw_lm->orig->ops.setup_blend_config(ctx, i,
-				hw_lm->cfg[i].fg_alpha,
-				hw_lm->cfg[i].bg_alpha,
-				hw_lm->cfg[i].blend_op);
+			if (hw_lm->orig->ops.setup_blend_config)
+				hw_lm->orig->ops.setup_blend_config(ctx, i,
+					hw_lm->cfg[i].fg_alpha,
+					hw_lm->cfg[i].bg_alpha,
+					hw_lm->cfg[i].blend_op);
 			hw_lm->cfg[i].dirty = false;
 		}
 	}

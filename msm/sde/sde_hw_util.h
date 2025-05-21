@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,10 @@
 #include <drm/drm_drv.h>
 #include "sde_hw_mdss.h"
 #include "sde_hw_catalog.h"
+
+extern u32 sde_hw_util_log_mask;
+
+#define ENABLE_REG_DMA_MDSS_REGISTER_WRITE	1
 
 #define REG_MASK(n)                     ((BIT(n)) - 1)
 #define REG_MASK_SHIFT(n, shift)        ((REG_MASK(n)) << (shift))
@@ -30,6 +34,8 @@ struct sde_format_extended;
  * @length        length of register block offset
  * @xin_id        xin id
  * @hw_rev     mdss hw revision
+ * @virtual     HW is virtualized by host VM, GVM should not touch
+ * @vq_ctx      reg dma virtual queue context for HW virtualization
  */
 struct sde_hw_blk_reg_map {
 	void __iomem *base_off;
@@ -38,6 +44,8 @@ struct sde_hw_blk_reg_map {
 	u32 xin_id;
 	u32 hw_rev;
 	u32 log_mask;
+	bool virtual;
+	void *vq_ctx;
 };
 
 /**
@@ -281,10 +289,31 @@ void sde_reg_write(struct sde_hw_blk_reg_map *c,
 		u32 reg_off,
 		u32 val,
 		const char *name);
-int sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off);
+void sde_reg_modify(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 mask,
+		u32 val,
+		const char *name);
+void sde_reg_write_cpu(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 val,
+		const char *name);
+void sde_reg_modify_cpu(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 mask,
+		u32 val,
+		const char *name);
+int sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off, const char *name);
 
 #define SDE_REG_WRITE(c, off, val) sde_reg_write(c, off, val, #off)
-#define SDE_REG_READ(c, off) sde_reg_read(c, off)
+#define SDE_REG_WRITE_INC(c, off, data, size) sde_reg_write_inc(c, off, data, size, #off)
+#define SDE_REG_WRITE_SINGLE(c, off, data, size) sde_reg_write_single(c, off, data, size, #off)
+#define SDE_REG_WRITE_MULTIPLE(c, off, data, size, inc, wrap) sde_reg_write_multiple(c, off, data, size, inc, wrap, #off)
+#define SDE_REG_READ(c, off) sde_reg_read(c, off, #off)
+#define SDE_REG_MODIFY(c, off, mask, val) sde_reg_modify(c, off, mask, val, #off)
+
+#define SDE_REG_WRITE_CPU(c, off, val) sde_reg_write_cpu(c, off, val, #off)
+#define SDE_REG_MODIFY_CPU(c, off, mask, val) sde_reg_modify_cpu(c, off, mask, val, #off)
 
 #define MISR_FRAME_COUNT_MASK		0xFF
 #define MISR_CTRL_ENABLE		BIT(8)

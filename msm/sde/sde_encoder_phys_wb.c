@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -261,7 +261,7 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 	wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	cdm_cfg = &phys_enc->cdm_cfg;
 	hw_pp = phys_enc->hw_pp;
-	hw_cdm = phys_enc->hw_cdm;
+	hw_cdm = phys_enc->hw_cdm && !phys_enc->hw_cdm.hw.virtual? phys_enc->hw_cdm : NULL;
 	if (!hw_cdm)
 		return;
 
@@ -1569,7 +1569,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 	if (test_bit(SDE_WB_CWB_CTRL, &hw_wb->caps->features) ||
 			test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 		_sde_encoder_phys_wb_update_cwb_flush_helper(phys_enc, enable);
-	} else {
+	} else if (phys_enc->hw_mdptop->ops.set_cwb_ppb_cntl) {
 		phys_enc->hw_mdptop->ops.set_cwb_ppb_cntl(phys_enc->hw_mdptop,
 				need_merge, dspp_out);
 	}

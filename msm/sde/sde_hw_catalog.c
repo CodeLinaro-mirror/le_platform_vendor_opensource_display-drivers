@@ -150,6 +150,9 @@
 #define DEFAULT_CPU_DMA_LATENCY			PM_QOS_DEFAULT_VALUE
 #define DEFAULT_PPB_BUF_MAX_LINES		4
 #define DEFAULT_BW_UPVOTE_THRESHOLD_NS		600000
+#define DEFAULT_VA_TRAN_VMS				16
+#define DEFAULT_VA_TRAN_VQ0_SLOTS		64
+#define DEFAULT_VA_TRAN_VQX_SLOTS		8
 
 /* Uidle values */
 #define SDE_UIDLE_FAL10_EXIT_CNT 128
@@ -198,6 +201,7 @@ enum {
 };
 
 enum sde_prop {
+	SDE_INDEX,
 	SDE_OFF,
 	SDE_LEN,
 	SSPP_LINEWIDTH,
@@ -427,6 +431,7 @@ enum {
 	DSPP_OFF,
 	DSPP_SIZE,
 	DSPP_BLOCKS,
+	DSPP_LITE,
 	DSPP_PROP_MAX,
 };
 
@@ -547,6 +552,8 @@ enum {
 	REG_DMA_BROADCAST_DISABLED,
 	REG_DMA_XIN_ID,
 	REG_DMA_CLK_CTRL,
+	REG_DMA_VQ_NUM,
+	REG_DMA_VQ_OFF,
 	REG_DMA_PROP_MAX
 };
 
@@ -579,6 +586,14 @@ enum {
 	AI_SCALER_LEN,
 	AI_SCALER,
 	AI_SCALER_PROP_MAX,
+};
+
+enum {
+	VA_TRAN_OFF,
+	VA_TRAN_NUM_VM,
+	VA_TRAN_VM0_SLOTS,
+	VA_TRAN_VMX_SLOTS,
+	VA_TRAN_PROP_MAX
 };
 
 /*************************************************************
@@ -636,6 +651,7 @@ static struct sde_prop_type sde_hw_prop[] = {
 };
 
 static struct sde_prop_type sde_prop[] = {
+	{SDE_INDEX, "cell-index", false, PROP_TYPE_U32},
 	{SDE_OFF, "qcom,sde-off", true, PROP_TYPE_U32},
 	{SDE_LEN, "qcom,sde-len", false, PROP_TYPE_U32},
 	{SSPP_LINEWIDTH, "qcom,sde-sspp-linewidth", false, PROP_TYPE_U32},
@@ -881,6 +897,7 @@ static struct sde_prop_type dspp_prop[] = {
 	{DSPP_OFF, "qcom,sde-dspp-off", true, PROP_TYPE_U32_ARRAY},
 	{DSPP_SIZE, "qcom,sde-dspp-size", false, PROP_TYPE_U32},
 	{DSPP_BLOCKS, "qcom,sde-dspp-blocks", false, PROP_TYPE_NODE},
+	{DSPP_LITE, "qcom,sde-dspp-lite", false, PROP_TYPE_U32_ARRAY},
 };
 
 static struct sde_prop_type dspp_blocks_prop[] = {
@@ -1053,6 +1070,10 @@ static struct sde_prop_type reg_dma_prop[REG_DMA_PROP_MAX] = {
 		"qcom,sde-reg-dma-xin-id", false, PROP_TYPE_U32},
 	[REG_DMA_CLK_CTRL] = {REG_DMA_CLK_CTRL,
 		"qcom,sde-reg-dma-clk-ctrl", false, PROP_TYPE_BIT_OFFSET_ARRAY},
+	[REG_DMA_VQ_NUM] =  {REG_DMA_VQ_NUM, "qcom,sde-reg-dma-vq-num", false,
+		PROP_TYPE_U32},
+	[REG_DMA_VQ_OFF] =  {REG_DMA_VQ_OFF, "qcom,sde-reg-dma-vq-off", false,
+		PROP_TYPE_U32},
 };
 
 static struct sde_prop_type merge_3d_prop[] = {
@@ -1108,6 +1129,17 @@ static struct sde_prop_type ai_scaler_prop[] = {
 	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
 	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
 	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
+};
+
+static struct sde_prop_type va_tran_prop[VA_TRAN_PROP_MAX] = {
+	[VA_TRAN_OFF] =  {VA_TRAN_OFF, "qcom,sde-va-tran-off", true,
+		PROP_TYPE_U32_ARRAY},
+	[VA_TRAN_NUM_VM] =  {VA_TRAN_NUM_VM, "qcom,sde-va-tran-num-vm", false,
+		PROP_TYPE_U32_ARRAY},
+	[VA_TRAN_VM0_SLOTS] = {VA_TRAN_VM0_SLOTS, "qcom,sde-va-tran-vm0-slots",
+		false, PROP_TYPE_U32},
+	[VA_TRAN_VMX_SLOTS] = {VA_TRAN_VMX_SLOTS, "qcom,sde-va-tran-vmx-slots", false,
+		PROP_TYPE_U32},
 };
 
 /*************************************************************
@@ -2099,6 +2131,10 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
 			set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
+
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features)) {
+			set_bit(SDE_SSPP_LOCAL_FLUSH, &sspp->features);
+		}
 	}
 }
 
@@ -2280,6 +2316,8 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_CTL_LOCAL_FLUSH, &ctl->features);
 	}
 
 	sde_put_dt_props(props);
@@ -2458,6 +2496,8 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_MIXER_10_BITS_ALPHA, &mixer->features);
 			set_bit(SDE_MIXER_10_BITS_COLOR, &mixer->features);
 		}
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_MIXER_LOCAL_FLUSH, &mixer->features);
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);
@@ -3369,26 +3409,28 @@ static int _sde_dspp_sblks_parse_dt(struct device_node *np,
 		_sde_init_dspp_sblk(dspp, &sblk->gc, SDE_DSPP_GC,
 				DSPP_GC_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->gamut, SDE_DSPP_GAMUT,
-				DSPP_GAMUT_PROP, props);
+		if (!(dspp->features & BIT(SDE_DSPP_LITE))) {
+			_sde_init_dspp_sblk(dspp, &sblk->gamut, SDE_DSPP_GAMUT,
+					DSPP_GAMUT_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->dither, SDE_DSPP_DITHER,
-				DSPP_DITHER_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->dither, SDE_DSPP_DITHER,
+					DSPP_DITHER_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->hist, SDE_DSPP_HIST,
-				DSPP_HIST_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->hist, SDE_DSPP_HIST,
+					DSPP_HIST_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->hsic, SDE_DSPP_HSIC,
-				DSPP_HSIC_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->hsic, SDE_DSPP_HSIC,
+					DSPP_HSIC_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->memcolor, SDE_DSPP_MEMCOLOR,
-				DSPP_MEMCOLOR_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->memcolor, SDE_DSPP_MEMCOLOR,
+					DSPP_MEMCOLOR_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->sixzone, SDE_DSPP_SIXZONE,
-				DSPP_SIXZONE_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->sixzone, SDE_DSPP_SIXZONE,
+					DSPP_SIXZONE_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->vlut, SDE_DSPP_VLUT,
-				DSPP_VLUT_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->vlut, SDE_DSPP_VLUT,
+					DSPP_VLUT_PROP, props);
+		}
 	}
 
 	sde_put_dt_props(props);
@@ -3420,6 +3462,9 @@ static int _sde_dspp_cmn_parse_dt(struct device_node *np,
 				DSPP_OFF, i);
 		sde_cfg->dspp[i].len = PROP_VALUE_ACCESS(props->values,
 				DSPP_SIZE, 0);
+		if (i < props->counts[DSPP_LITE] && PROP_VALUE_ACCESS(props->values, DSPP_LITE, i))
+			sde_cfg->dspp[i].features |= BIT(SDE_DSPP_LITE);
+
 		sde_cfg->dspp[i].id = DSPP_0 + i;
 		snprintf(sde_cfg->dspp[i].name, SDE_HW_BLK_NAME_LEN, "dspp_%d",
 				i);
@@ -4582,12 +4627,13 @@ static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)
 
 	cfg->mdss_count = 1;
 	cfg->mdss[0].base = MDSS_BASE_OFFSET;
-	cfg->mdss[0].id = MDP_TOP;
+	cfg->mdss[0].id = (props->exists[SDE_INDEX] ? PROP_VALUE_ACCESS(props->values, SDE_INDEX, 0) : 0)
+						+ MDP_TOP;
 	snprintf(cfg->mdss[0].name, SDE_HW_BLK_NAME_LEN, "mdss_%u",
 			cfg->mdss[0].id - MDP_TOP);
 
 	cfg->mdp_count = 1;
-	cfg->mdp[0].id = MDP_TOP;
+	cfg->mdp[0].id = cfg->mdss[0].id;
 	snprintf(cfg->mdp[0].name, SDE_HW_BLK_NAME_LEN, "top_%u",
 			cfg->mdp[0].id - MDP_TOP);
 	cfg->mdp[0].base = PROP_VALUE_ACCESS(props->values, SDE_OFF, 0);
@@ -4683,14 +4729,17 @@ static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
 
 	for (i = 0; i < sde_cfg->ctl_count; i++) {
 		ctl = sde_cfg->ctl + i;
-		set_bit(SDE_CTL_REG_DMA, &ctl->features);
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_CTL_REG_DMA_VQ, &ctl->features);
+		else
+			set_bit(SDE_CTL_REG_DMA, &ctl->features);
 	}
 }
 
 static int sde_parse_reg_dma_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
-	int rc = 0, i, prop_count[REG_DMA_PROP_MAX];
+	int rc = 0, i, j, prop_count[REG_DMA_PROP_MAX];
 	struct sde_prop_value *prop_value = NULL;
 	u32 off_count;
 	bool prop_exists[REG_DMA_PROP_MAX];
@@ -4704,59 +4753,112 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 		goto end;
 	}
 
-	rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
-			prop_count, &off_count);
-	if (rc || !off_count)
-		goto end;
+	if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features)) {
+		sde_cfg->dma_cfg.vq_supported = true;
 
-	rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
-			prop_count, prop_exists, prop_value);
-	if (rc)
-		goto end;
-
-	sde_cfg->reg_dma_count = 0;
-	memset(&dma_type_exists, 0, sizeof(dma_type_exists));
-	for (i = 0; i < off_count; i++) {
-		dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
-		if (dma_type >= REG_DMA_TYPE_MAX) {
-			SDE_ERROR("Invalid DMA type %d\n", dma_type);
-			goto end;
-		} else if (dma_type_exists[dma_type]) {
-			SDE_ERROR("DMA type ID %d exists more than once\n",
-					dma_type);
+		rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, &off_count);
+		if (rc || !off_count) {
+			SDE_ERROR("no regdma off\n");
 			goto end;
 		}
 
-		dma_type_exists[dma_type] = true;
-		sde_cfg->dma_cfg.reg_dma_blks[dma_type].base =
-				PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i);
-		sde_cfg->dma_cfg.reg_dma_blks[dma_type].valid = true;
-		sde_cfg->reg_dma_count++;
-	}
+		rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, prop_exists, prop_value);
+		if (rc) {
+			SDE_ERROR("read regdma dt failed\n");
+			goto end;
+		}
 
-	sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_VERSION, 0);
-	sde_cfg->dma_cfg.trigger_sel_off = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_TRIGGER_OFF, 0);
-	sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_BROADCAST_DISABLED, 0);
-	sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_XIN_ID, 0);
-	sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
-	sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
+		sde_cfg->dma_cfg.vq_num = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VQ_NUM, 0);
+		sde_cfg->dma_cfg.vq_off = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VQ_OFF, 0);
 
-	if (test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features)) {
-		sde_cfg->dma_cfg.split_vbif_supported = true;
+		for (i = 0; i < off_count; i++) {
+			dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
+
+			for (j = 0; j < sde_cfg->dma_cfg.vq_num; j++) {
+				sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].base =
+						PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i)
+						+ sde_cfg->dma_cfg.vq_off * j;
+				sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].valid = true;
+				SDE_DEBUG("type %d  vq %d  base %X\n", dma_type, j + REG_DMA_VQ_0,
+						sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].base);
+			}
+		}
+		sde_cfg->reg_dma_count = 1;
+
+		sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VERSION, 0);
+		sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_BROADCAST_DISABLED, 0);
+		sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_XIN_ID, 0);
+		sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
+		sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
 	} else {
-		for (i = 0; i < sde_cfg->mdp_count; i++) {
-			sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].reg_off =
-				PROP_BITVALUE_ACCESS(prop_value,
-						REG_DMA_CLK_CTRL, 0, 0);
-			sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].bit_off =
-				PROP_BITVALUE_ACCESS(prop_value,
-						REG_DMA_CLK_CTRL, 0, 1);
+		sde_cfg->dma_cfg.vq_supported = false;
+
+		rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, &off_count);
+		if (rc || !off_count) {
+			SDE_ERROR("no regdma off\n");
+			goto end;
+		}
+
+		rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, prop_exists, prop_value);
+		if (rc) {
+			SDE_ERROR("read regdma dt failed\n");
+			goto end;
+		}
+
+		sde_cfg->reg_dma_count = 0;
+		memset(&dma_type_exists, 0, sizeof(dma_type_exists));
+		for (i = 0; i < off_count; i++) {
+			dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
+			if (dma_type >= REG_DMA_TYPE_MAX) {
+				SDE_ERROR("Invalid DMA type %d\n", dma_type);
+				goto end;
+			} else if (dma_type_exists[dma_type]) {
+				SDE_ERROR("DMA type ID %d exists more than once\n",
+						dma_type);
+				goto end;
+			}
+
+			dma_type_exists[dma_type] = true;
+			sde_cfg->dma_cfg.reg_dma_blks[dma_type].base =
+					PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i);
+			sde_cfg->dma_cfg.reg_dma_blks[dma_type].valid = true;
+			sde_cfg->reg_dma_count++;
+		}
+
+		sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VERSION, 0);
+		sde_cfg->dma_cfg.trigger_sel_off = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_TRIGGER_OFF, 0);
+		sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_BROADCAST_DISABLED, 0);
+		sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_XIN_ID, 0);
+		sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
+		sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
+
+		if (test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features)) {
+			sde_cfg->dma_cfg.split_vbif_supported = true;
+		} else {
+			for (i = 0; i < sde_cfg->mdp_count; i++) {
+				sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].reg_off =
+					PROP_BITVALUE_ACCESS(prop_value,
+							REG_DMA_CLK_CTRL, 0, 0);
+				sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].bit_off =
+					PROP_BITVALUE_ACCESS(prop_value,
+							REG_DMA_CLK_CTRL, 0, 1);
+			}
 		}
 	}
+
 	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
@@ -5203,6 +5305,55 @@ static int sde_qdss_parse_dt(struct device_node *np,
 end:
 	kvfree(prop_value);
 	return rc;
+}
+
+static int sde_parse_va_tran_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int rc = 0, i, prop_count[VA_TRAN_PROP_MAX];
+	struct sde_prop_value *prop_value = NULL;
+	u32 off_count;
+	bool prop_exists[VA_TRAN_PROP_MAX];
+
+	prop_value = kvcalloc(VA_TRAN_PROP_MAX,
+			sizeof(struct sde_prop_value), GFP_KERNEL);
+	if (!prop_value) {
+		rc = -ENOMEM;
+		goto end;
+	}
+
+	rc = _validate_dt_entry(np, va_tran_prop, ARRAY_SIZE(va_tran_prop),
+			prop_count, &off_count);
+	if (rc || !off_count)
+		goto end;
+
+	rc = _read_dt_entry(np, va_tran_prop, ARRAY_SIZE(va_tran_prop),
+			prop_count, prop_exists, prop_value);
+	if (rc)
+		goto end;
+
+	sde_cfg->vatran_count = off_count;
+	for (i = 0; i < off_count; i++)
+		sde_cfg->vatran.base =
+				PROP_VALUE_ACCESS(prop_value, VA_TRAN_OFF, i);
+
+	sde_cfg->vatran.num_vm = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_NUM_VM, 0);
+	if (!sde_cfg->vatran.num_vm)
+		sde_cfg->vatran.num_vm = DEFAULT_VA_TRAN_VMS;
+	sde_cfg->vatran.vm0_slots = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_VM0_SLOTS, 0);
+	if (!sde_cfg->vatran.vm0_slots)
+		sde_cfg->vatran.vm0_slots = DEFAULT_VA_TRAN_VQ0_SLOTS;
+	sde_cfg->vatran.vmx_slots = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_VMX_SLOTS, 0);
+	if (!sde_cfg->vatran.vmx_slots)
+		sde_cfg->vatran.vmx_slots = DEFAULT_VA_TRAN_VQX_SLOTS;
+
+end:
+	kvfree(prop_value);
+	/* va tran is optional feature hence return 0 */
+	return 0;
 }
 
 static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
@@ -6054,6 +6205,59 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->has_line_insertion = true;
 		sde_cfg->osc_clk_rate = 38400000;
+	} else if (IS_NORD_TARGET(hw_rev)) {
+		set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+		set_bit(SDE_FEATURE_DUAL_DEDICATED_CWB, sde_cfg->features);
+		set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+		set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+		set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+		set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+		set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+		set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+		set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+		set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+		set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+		set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+		set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+		//set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
+		set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+		set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+		set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+		//set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+		set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+		set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
+		set_bit(SDE_SYS_CACHE_DISP_WB, sde_cfg->sde_sys_cache_type_map);
+		set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
+		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
+		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+		set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
+		set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
+		set_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features);
+		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+		sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
+		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
+		sde_cfg->perf.min_prefill_lines = 40;
+		sde_cfg->vbif_qos_nlvl = 8;
+		sde_cfg->qos_target_time_ns = 11160;
+		sde_cfg->ts_prefill_rev = 2;
+		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+		sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+		sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
+		sde_cfg->mdss_hw_block_size = 0x15c;
+		sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
+		//sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
+		//sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+		//sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
+		//sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+		sde_cfg->has_line_insertion = true;
+		sde_cfg->osc_clk_rate = 38400000;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;
@@ -6188,7 +6392,9 @@ void sde_hw_catalog_deinit(struct sde_mdss_cfg *sde_cfg)
 	if (!sde_cfg)
 		return;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	sde_hw_catalog_irq_offset_list_delete(&sde_cfg->irq_offset_list);
+#endif
 
 	for (i = 0; i < sde_cfg->sspp_count; i++)
 		kvfree(sde_cfg->sspp[i].sblk);
@@ -6465,6 +6671,10 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 		goto end;
 
 	rc = sde_qdss_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_parse_va_tran_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 

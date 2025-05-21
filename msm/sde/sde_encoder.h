@@ -259,6 +259,7 @@ enum sde_multi_te_states {
  * @phys_vid_encs:	Video physical encoders for panel mode switch.
  * @phys_cmd_encs:	Command physical encoders for panel mode switch.
  * @phys_lb_encs:	Loopback physical encoders for cac loopback mode
+ * @phys_hyp_encs:	Hypervision encoders for virtualization mode
  * @cur_master:		Pointer to the current master in this mode. Optimization
  *			Only valid after enable. Cleared as disable.
  * @hw_pp		Handle to the pingpong blocks used for the display. No.
@@ -364,6 +365,7 @@ struct sde_encoder_virt {
 	struct sde_encoder_phys *phys_vid_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_lb_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
+	struct sde_encoder_phys *phys_hyp_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
@@ -439,6 +441,10 @@ struct sde_encoder_virt {
 	bool cesta_force_auto_active_db_update;
 	bool cesta_reset_intf_master;
 	u32 intf_master;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct drm_atomic_state *old_state;
+#endif
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

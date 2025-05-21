@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -858,6 +858,37 @@ struct sde_hw_sspp_ops {
 	 */
 	void (*setup_img_size)(struct sde_hw_pipe *ctx,
 		struct sde_rect *img_rec);
+
+	/**
+	 * set_active_pipe - update active src pipe
+	 * @ctx: Pointer to pipe object
+	 * @index: Pipe rectangle to operate on
+	 */
+	void (*set_active_pipe)(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active);
+
+	/**
+	 * set_active_fetch_pipe - update active fetch src pipe
+	 * @ctx: Pointer to pipe object
+	 * @index: Pipe rectangle to operate on
+	 */
+	void (*set_active_fetch_pipe)(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active);
+
+	/**
+	 * local_flush - local flush SSPP/RECT update
+	 * @ctx: Pointer to pipe object
+	 * @index: Pipe rectangle to operate on
+	 */
+	void (*local_flush)(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index);
+
+	/**
+	 * set_flush_type - set next commit to be global or local flush
+	 * @ctx: Pointer to pipe object
+	 * @global: Set pipe next commit to be global flush
+	 */
+	void (*set_flush_type)(struct sde_hw_pipe *ctx, bool global);
 };
 
 /**
@@ -870,6 +901,8 @@ struct sde_hw_sspp_ops {
  * @cap: pointer to layer_cfg
  * @ops: pointer to operations possible for this pipe
  * @dpu_idx: dpu index
+ * @globl_flush: for next commit perform global flush or local flush
+ * @sde_kms: SDE KMS context
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -885,6 +918,8 @@ struct sde_hw_pipe {
 	struct sde_hw_ctl *ctl;
 
 	u32 dpu_idx;
+	bool global_flush;
+	struct sde_kms *sde_kms;
 };
 
 /**
@@ -900,7 +935,7 @@ struct sde_hw_pipe {
 struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		void __iomem *addr, struct sde_mdss_cfg *catalog,
 		bool is_virtual_pipe, struct sde_vbif_clk_client *client,
-		u32 dpu_idx);
+		u32 dpu_idx, struct sde_kms *sde_kms);
 
 /**
  * sde_hw_sspp_destroy(): Destroys SSPP driver context

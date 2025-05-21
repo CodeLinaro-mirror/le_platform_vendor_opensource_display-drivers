@@ -153,6 +153,8 @@ struct sde_hw_intf_cfg_v1 {
  * @active_fetch_pipe_mask: active fetch pipes on this control path
  * @active_pipe_mask: active pipes on this control path
  * @active_lm_mask: active lms on this control path
+ * @previous_flush_mask: for HW vitualization, previous flush mask
+ * @global_flush_mask: for HW vitualization, global flush SSPP/LM
  */
 struct sde_ctl_flush_cfg {
 	u32 pending_flush_mask;
@@ -161,6 +163,9 @@ struct sde_ctl_flush_cfg {
 	u32 active_fetch_pipe_mask;
 	u32 active_pipe_mask;
 	u32 active_lm_mask;
+	u32 previous_flush_mask;
+	u32 global_flush_mask;
+	bool force_global_flush;
 };
 
 enum sde_ctl_cesta_flag {
@@ -669,6 +674,12 @@ struct sde_hw_ctl_ops {
 	 * @ctx   : ctl path ctx pointer
 	 */
 	int (*get_intf_master)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * Force global flush for next flush
+	 * @ctx   : ctl path ctx pointer
+	 */
+	void (*force_global_flush)(struct sde_hw_ctl *ctx);
 };
 
 /**

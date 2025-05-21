@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -153,6 +153,7 @@ enum sde_uidle {
 
 enum sde_mdp {
 	MDP_TOP = 0x1,
+	MDP_SECOND,
 	MDP_MAX,
 };
 
@@ -236,6 +237,10 @@ enum sde_dspp {
 	DSPP_1,
 	DSPP_2,
 	DSPP_3,
+	DSPP_4,
+	DSPP_5,
+	DSPP_6,
+	DSPP_7,
 	DSPP_MAX
 };
 
@@ -279,6 +284,8 @@ enum sde_ctl {
 	CTL_3,
 	CTL_4,
 	CTL_5,
+	CTL_6,
+	CTL_7,
 	CTL_MAX
 };
 
@@ -340,6 +347,8 @@ enum sde_intf {
 	INTF_6,
 	INTF_7,
 	INTF_8,
+	INTF_9,
+	INTF_10,
 	INTF_MAX
 };
 
@@ -440,6 +449,40 @@ enum sde_merge_3d {
 enum sde_qdss {
 	QDSS_0,
 	QDSS_MAX
+};
+
+enum sde_roi_crc {
+	ROI_CRC_0 = 1,
+	ROI_CRC_1,
+	ROI_CRC_2,
+	ROI_CRC_3,
+	ROI_CRC_4,
+	ROI_CRC_5,
+	ROI_CRC_6,
+	ROI_CRC_7,
+	ROI_CRC_MAX
+};
+
+enum sde_roi_crc_engine {
+	ROI_CRC_ENGINE_0 = 1,
+	ROI_CRC_ENGINE_1,
+	ROI_CRC_ENGINE_2,
+	ROI_CRC_ENGINE_3,
+	ROI_CRC_ENGINE_4,
+	ROI_CRC_ENGINE_MAX
+};
+
+enum sde_roi_crc_roi {
+	ROI_CRC_ROI_0 = 1,
+	ROI_CRC_ROI_1,
+	ROI_CRC_ROI_2,
+	ROI_CRC_ROI_3,
+	ROI_CRC_ROI_MAX
+};
+
+enum sde_vatran {
+	VA_TRAN_0 = 1,
+	VA_TRAN_MAX
 };
 
 /**
@@ -690,6 +733,7 @@ struct sde_mdss_color {
 #define SDE_DBG_MASK_QDSS     (1 << 16)
 #define SDE_DBG_MASK_VDC      (1 << 17)
 #define SDE_DBG_MASK_DNSC_BLUR  (1 << 18)
+#define SDE_DBG_MASK_VATRAN   (1 << 19)
 
 /**
  * struct sde_cp_skip_blend_plane: skip blend plane payload

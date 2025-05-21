@@ -370,9 +370,12 @@ static void _sde_encoder_phys_cmd_setup_sim_qsync_frame(struct sde_encoder_phys 
 
 	SDE_EVT32(DRMID(phys_enc->parent), frame, qsync_min_fps, frame_rate);
 	phys_enc->ops.control_te(phys_enc, false);
-	phys_enc->hw_intf->ops.setup_vsync_source(phys_enc->hw_intf, frame_rate);
-	phys_enc->hw_intf->ops.vsync_sel(phys_enc->hw_intf, SDE_VSYNC_SOURCE_WD_TIMER_0);
-	phys_enc->ops.control_te(phys_enc, true);
+	if (phys_enc->hw_intf->ops.setup_vsync_source)
+		phys_enc->hw_intf->ops.setup_vsync_source(phys_enc->hw_intf, frame_rate);
+	if (phys_enc->hw_intf->ops.vsync_sel)
+		phys_enc->hw_intf->ops.vsync_sel(phys_enc->hw_intf, SDE_VSYNC_SOURCE_WD_TIMER_0);
+	if (phys_enc->ops.control_te)
+		phys_enc->ops.control_te(phys_enc, true);
 	phys_enc->sim_qsync_frame = frame;
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, flags);
 }
@@ -449,7 +452,7 @@ static void _sde_encoder_phys_signal_frame_done(struct sde_encoder_phys *phys_en
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
 		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
-		DPUID(phys_enc->parent->dev));
+		DPUID(phys_enc->sde_kms));
 
 	/*
 	 * For hw-fences, in the last frame during the autorefresh disable transition
@@ -512,7 +515,7 @@ static void sde_encoder_phys_cmd_autorefresh_done_irq(void *arg, int irq_idx)
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
-			phys_enc->hw_intf->idx - INTF_0, new_cnt, DPUID(phys_enc->parent->dev));
+			phys_enc->hw_intf->idx - INTF_0, new_cnt, DPUID(phys_enc->sde_kms));
 
 	if (new_cnt)
 		_sde_encoder_phys_signal_frame_done(phys_enc);
@@ -562,7 +565,7 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
 		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
-		DPUID(phys_enc->parent->dev));
+		DPUID(phys_enc->sde_kms));
 	if (cesta_client)
 		sde_cesta_get_status(cesta_client, &scc_status);
 
@@ -606,7 +609,7 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 		info[0].pp_idx, info[0].intf_idx, info[0].intf_frame_count,
 		info[0].wr_ptr_line_count, info[0].rd_ptr_line_count, info[1].pp_idx,
 		info[1].intf_idx, info[1].intf_frame_count, info[1].wr_ptr_line_count,
-		info[1].rd_ptr_line_count, DPUID(phys_enc->parent->dev));
+		info[1].rd_ptr_line_count, DPUID(phys_enc->sde_kms));
 
 	if (qsync_mode &&
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))
@@ -969,9 +972,9 @@ static int _sde_encoder_phys_cmd_poll_write_pointer_started(
 			goto end;
 	}
 
-	if (phys_enc->has_intf_te)
+	if (phys_enc->has_intf_te && hw_intf->ops.get_vsync_info)
 		ret = hw_intf->ops.get_vsync_info(hw_intf, &info);
-	else
+	else if (hw_pp->ops.get_vsync_info)
 		ret = hw_pp->ops.get_vsync_info(hw_pp, &info);
 
 	if (ret)
@@ -1641,10 +1644,12 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 			tc_cfg.sync_threshold_continue);
 
 	if (phys_enc->has_intf_te) {
-		phys_enc->hw_intf->ops.setup_tearcheck(phys_enc->hw_intf,
-				&tc_cfg);
-		phys_enc->hw_intf->ops.enable_tearcheck(phys_enc->hw_intf,
-				tc_enable);
+		if (phys_enc->hw_intf->ops.setup_tearcheck)
+			phys_enc->hw_intf->ops.setup_tearcheck(phys_enc->hw_intf,
+					&tc_cfg);
+		if (phys_enc->hw_intf->ops.enable_tearcheck)
+			phys_enc->hw_intf->ops.enable_tearcheck(phys_enc->hw_intf,
+					tc_enable);
 		if (sde_encoder_get_cesta_client(phys_enc->parent)) {
 			if (sde_enc->multi_te_fps)
 				_sde_encoder_update_multi_te_config(phys_enc, true);
@@ -1652,9 +1657,11 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 				_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
 		}
 	} else {
-		phys_enc->hw_pp->ops.setup_tearcheck(phys_enc->hw_pp, &tc_cfg);
-		phys_enc->hw_pp->ops.enable_tearcheck(phys_enc->hw_pp,
-				tc_enable);
+		if (phys_enc->hw_pp->ops.setup_tearcheck)
+			phys_enc->hw_pp->ops.setup_tearcheck(phys_enc->hw_pp, &tc_cfg);
+		if (phys_enc->hw_pp->ops.enable_tearcheck)
+			phys_enc->hw_pp->ops.enable_tearcheck(phys_enc->hw_pp,
+					tc_enable);
 	}
 }
 

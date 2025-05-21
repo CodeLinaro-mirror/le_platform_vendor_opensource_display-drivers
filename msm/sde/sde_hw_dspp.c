@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -37,6 +37,7 @@ static struct sde_dspp_cfg *_dspp_offset(enum sde_dspp dspp,
 			b->length = m->dspp[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DSPP;
+			b->virtual = m->dspp[i].virtual;
 			return &m->dspp[i];
 		}
 	}
@@ -629,12 +630,15 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 	c->hw_top.length = m->dspp_top.len;
 	c->hw_top.hw_rev = m->hw_rev;
 	c->hw_top.log_mask = SDE_DBG_MASK_DSPP;
-	c->dpu_idx = sde_kms->dev->primary->index;
+	c->dpu_idx = DPUID(sde_kms);
 	c->sde_kms = sde_kms;
 
 	/* Assign ops */
 	c->idx = idx;
 	c->cap = cfg;
+	if (c->hw.virtual)
+		goto done;
+
 	_init_dspp_ops();
 	_setup_dspp_ops(c, c->cap->features);
 
@@ -707,6 +711,7 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 		}
 	}
 
+done:
 	return &c->hw;
 }
 

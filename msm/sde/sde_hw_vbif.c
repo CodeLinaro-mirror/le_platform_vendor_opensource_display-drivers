@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 #include <linux/iopoll.h>
@@ -203,7 +203,7 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 	u32 val;
 
 	ret = read_poll_timeout(sde_reg_read, ctrl, (ctrl & BIT(0)),
-			100, 4000, false, c, VBIF_AXI_HALT_CTRL1);
+			100, 4000, false, c, VBIF_AXI_HALT_CTRL1, "VBIF_AXI_HALT_CTRL1");
 
 	/* check AXI port 0 & 1 status on error */
 	if (ret) {
@@ -291,6 +291,7 @@ static const struct sde_vbif_cfg *_top_offset(enum sde_vbif vbif,
 			b->length = m->vbif[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_VBIF;
+			b->virtual = m->vbif[i].virtual;
 			return &m->vbif[i];
 		}
 	}
@@ -320,10 +321,14 @@ struct sde_hw_vbif *sde_hw_vbif_init(enum sde_vbif idx,
 	 */
 	c->idx = idx;
 	c->cap = cfg;
+	if (c->hw.virtual)
+		goto done;
+
 	_setup_vbif_ops(m, &c->ops, c->cap->features);
 
 	/* no need to register sub-range in sde dbg, dump entire vbif io base */
 
+done:
 	mutex_init(&c->mutex);
 
 	return c;

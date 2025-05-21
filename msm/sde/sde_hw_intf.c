@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -165,6 +165,7 @@ static struct sde_intf_cfg *_intf_offset(enum sde_intf intf,
 			b->length = m->intf[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_INTF;
+			b->virtual = m->intf[i].virtual;
 			return &m->intf[i];
 		}
 	}
@@ -988,7 +989,7 @@ static int sde_hw_intf_collect_misr(struct sde_hw_intf *intf, bool nonblock,
 	if (!nonblock) {
 		if (ctrl & MISR_CTRL_ENABLE) {
 			rc = read_poll_timeout(sde_reg_read, ctrl, (ctrl & MISR_CTRL_STATUS) > 0,
-					500, false, 84000, c, INTF_MISR_CTRL);
+					500, false, 84000, c, INTF_MISR_CTRL, "INTF_MISR_CTRL");
 			if (rc)
 				return rc;
 		} else {
@@ -1155,7 +1156,7 @@ static int sde_hw_intf_poll_timeout_wr_ptr(struct sde_hw_intf *intf,
 
 	c = &intf->hw;
 	return read_poll_timeout(sde_reg_read, val, (val & mask) >= 1, 10, false, timeout_us,
-			c, INTF_TEAR_LINE_COUNT);
+			c, INTF_TEAR_LINE_COUNT, "INTF_TEAR_LINE_COUNT");
 }
 
 static int sde_hw_intf_enable_te(struct sde_hw_intf *intf, bool enable)
@@ -1567,6 +1568,43 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->setup_prog_dynref = sde_hw_intf_setup_prog_dynref;
 }
 
+static void _setup_virtual_intf_ops(struct sde_hw_intf_ops *ops,
+		unsigned long cap, unsigned long mdss_cap)
+{
+	ops->setup_misr = sde_hw_intf_setup_misr;
+	ops->collect_misr = sde_hw_intf_collect_misr;
+	ops->get_line_count = sde_hw_intf_get_line_count;
+	ops->get_underrun_line_count = sde_hw_intf_get_underrun_line_count;
+	ops->get_intr_status = sde_hw_intf_get_intr_status;
+	ops->is_te_32bit_supported = sde_hw_intf_is_te_32bit_supported;
+
+	if (cap & BIT(SDE_INTF_STATUS))
+		ops->get_status = sde_hw_intf_v1_get_status;
+	else
+		ops->get_status = sde_hw_intf_get_status;
+
+	if (cap & BIT(SDE_INTF_AVR_STATUS))
+		ops->get_avr_status = sde_hw_intf_get_avr_status;
+
+	if (cap & BIT(SDE_INTF_NUM_AVR_STEP))
+		ops->get_cur_num_avr_step = sde_hw_intf_get_cur_num_avr_step;
+
+	if (cap & BIT(SDE_INTF_ESYNC))
+		ops->get_esync_timestamp = sde_hw_intf_get_esync_timestamp;
+
+	if (cap & BIT(SDE_INTF_TE)) {
+		ops->get_vsync_info = sde_hw_intf_get_vsync_info;
+		ops->get_autorefresh = sde_hw_intf_get_autorefresh_config;
+		ops->poll_timeout_wr_ptr = sde_hw_intf_poll_timeout_wr_ptr;
+	}
+
+	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS)))
+		ops->get_vsync_timestamp = sde_hw_intf_get_vsync_timestamp;
+
+	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
+		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+}
+
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m)
@@ -1591,7 +1629,10 @@ struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 	c->idx = idx;
 	c->cap = cfg;
 	c->mdss = m;
-	_setup_intf_ops(&c->ops, c->cap->features, m->mdp[0].features);
+	if (c->hw.virtual)
+		_setup_virtual_intf_ops(&c->ops, c->cap->features, m->mdp[0].features);
+	else
+		_setup_intf_ops(&c->ops, c->cap->features, m->mdp[0].features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
