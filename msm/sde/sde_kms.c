@@ -3813,6 +3813,14 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 
 		conn_state = to_sde_connector_state(connector->state);
 		conn_state->cont_splash_populated = true;
+		
+		for (i = 0; i < priv->num_encoders; i++) {
+			if (priv->encoders[i]->base.id != encoder->base.id)
+				continue;
+
+			priv->encoders[i]->possible_crtcs = drm_crtc_mask(crtc);
+			break;
+		}
 
 		rc = _sde_kms_update_planes_for_cont_splash(sde_kms,
 				splash_display, crtc);
