@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -13,7 +13,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/sde_io_util.h>
 #include <linux/of_gpio.h>
-#include <linux/timer.h>
+#include <linux/hrtimer.h>
 #include "dp_lphw_hpd.h"
 #include "dp_debug.h"
 
@@ -80,7 +80,7 @@ struct dp_lphw_hpd_private {
 	int irq;
 	bool hpd;
 	bool configured;
-	struct timer_list gpio_timer;
+	struct hrtimer gpio_timer;
 	bool last_gpio_hpd;
 	u32 gpio_check_state;
 	ktime_t gpio_check_start_time;
@@ -219,8 +219,8 @@ repeat:
 			/* Raising edge */
 			lphw_hpd->gpio_check_start_time = current_time;
 			lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_RAISING;
-			mod_timer(&lphw_hpd->gpio_timer, jiffies +
-				msecs_to_jiffies(lphw_hpd->parser->gpio_hpd_high_debounce_ms));
+			hrtimer_start(&lphw_hpd->gpio_timer,
+				ms_to_ktime((u64)lphw_hpd->parser->gpio_hpd_high_debounce_ms), HRTIMER_MODE_REL);
 			DP_DEBUG("DP%d GPIO raising edge debounce started %dms\n",
 					lphw_hpd->parser->cell_idx,
 					lphw_hpd->parser->gpio_hpd_high_debounce_ms);
@@ -228,8 +228,8 @@ repeat:
 			/* Falling edge */
 			lphw_hpd->gpio_check_start_time = current_time;
 			lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_FALLING;
-			mod_timer(&lphw_hpd->gpio_timer, jiffies +
-				msecs_to_jiffies(lphw_hpd->parser->gpio_hpd_low_debounce_ms));
+			hrtimer_start(&lphw_hpd->gpio_timer,
+				ms_to_ktime((u64)lphw_hpd->parser->gpio_hpd_low_debounce_ms), HRTIMER_MODE_REL);
 			DP_DEBUG("DP%d GPIO falling edge debounce started %dms\n",
 					lphw_hpd->parser->cell_idx,
 					lphw_hpd->parser->gpio_hpd_low_debounce_ms);
@@ -246,7 +246,7 @@ repeat:
 		 * Falling edge during raising deboucing,
 		 * cancel timer and set to falling edge debouncing
 		 */
-		del_timer(&lphw_hpd->gpio_timer);
+		hrtimer_cancel(&lphw_hpd->gpio_timer);
 		lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_IDLE;
 		goto repeat;
 
@@ -260,16 +260,16 @@ repeat:
 		 * Raising edge during falling deboucing,
 		 * cancel timer and set to raising edge debouncing
 		 */
-		del_timer(&lphw_hpd->gpio_timer);
+		hrtimer_cancel(&lphw_hpd->gpio_timer);
 		lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_IDLE;
 		goto repeat;
 	}
 }
 
-static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
+static enum hrtimer_restart dp_lphw_hpd_gpio_timer_callback(struct hrtimer *handle)
 {
 	struct dp_lphw_hpd_private *lphw_hpd =
-			from_timer(lphw_hpd, t, gpio_timer);
+			container_of(handle, struct dp_lphw_hpd_private, gpio_timer);
 	bool hpd;
 	ktime_t current_time;
 	s64 time_diff;
@@ -303,8 +303,7 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 					(int)time_diff);
 			lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_IDLE;
 			queue_work(system_highpri_wq, &lphw_hpd->gpio_work);
-		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_high_debounce_ms
-				- jiffies_to_msecs(1)) {
+		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_high_debounce_ms) {
 			DP_INFO("DP%d GPIO HPD goes HIGH %dms\n",
 					lphw_hpd->parser->cell_idx, (int)time_diff);
 			lphw_hpd->last_gpio_hpd = hpd;
@@ -350,8 +349,7 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 					(int)time_diff);
 			lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_IDLE;
 			queue_work(system_highpri_wq, &lphw_hpd->gpio_work);
-		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_low_debounce_ms
-				- jiffies_to_msecs(1)) {
+		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_low_debounce_ms) {
 			DP_INFO("DP%d GPIO HPD goes LOW %dms\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff);
@@ -381,12 +379,14 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 			}
 		} else {
 			/* Should not come here */
-			DP_DEBUG("DP%d GPIO HPD LOW debounce not reached %dms hpd %d\n",
+			DP_INFO("DP%d GPIO HPD LOW debounce not reached %dms hpd %d\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff, hpd);
 		}
 		break;
 	}
+
+	return HRTIMER_NORESTART;
 }
 
 static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
@@ -650,8 +650,8 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 			"dp-gpio-intp", lphw_hpd);
 		lphw_hpd->gpio_check_start_time = ktime_get();
 		lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_RAISING;
-		mod_timer(&lphw_hpd->gpio_timer, jiffies +
-				msecs_to_jiffies(lphw_hpd->parser->gpio_hpd_high_debounce_ms));
+		hrtimer_start(&lphw_hpd->gpio_timer,
+				ms_to_ktime((u64)lphw_hpd->parser->gpio_hpd_high_debounce_ms), HRTIMER_MODE_REL);
 		DP_DEBUG("DP%d GPIO raising edge debounce started\n",
 				lphw_hpd->parser->cell_idx);
 	} else {
@@ -661,8 +661,8 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 			"dp-gpio-intp", lphw_hpd);
 		lphw_hpd->gpio_check_start_time = ktime_get();
 		lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_FALLING;
-		mod_timer(&lphw_hpd->gpio_timer, jiffies +
-				msecs_to_jiffies(lphw_hpd->parser->gpio_hpd_low_debounce_ms));
+		hrtimer_start(&lphw_hpd->gpio_timer,
+				ms_to_ktime((u64)lphw_hpd->parser->gpio_hpd_low_debounce_ms), HRTIMER_MODE_REL);
 		DP_DEBUG("DP%d GPIO falling edge debounce started\n",
 				lphw_hpd->parser->cell_idx);
 	}
@@ -685,7 +685,7 @@ static void dp_lphw_hpd_unregister(struct dp_hpd *dp_hpd)
 	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
 
 	disable_irq(lphw_hpd->irq);
-	del_timer_sync(&lphw_hpd->gpio_timer);
+	hrtimer_cancel(&lphw_hpd->gpio_timer);
 	DP_INFO("DP%d disable lphw_hpd irq.\n", lphw_hpd->parser->cell_idx);
 	devm_free_irq(lphw_hpd->dev, lphw_hpd->irq, lphw_hpd);
 }
@@ -849,7 +849,8 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 				DENOISE_FALL_EDGE_INTERVAL_MS;
 	lphw_hpd->last_gpio_hpd = false;
 	lphw_hpd->gpio_check_state = GPIO_CHECK_STATE_INIT;
-	timer_setup(&lphw_hpd->gpio_timer, dp_lphw_hpd_gpio_timer_callback, 0);
+	hrtimer_init(&lphw_hpd->gpio_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	lphw_hpd->gpio_timer.function = dp_lphw_hpd_gpio_timer_callback;
 
 	return &lphw_hpd->base;
 
@@ -871,7 +872,7 @@ void dp_lphw_hpd_put(struct dp_hpd *dp_hpd)
 	dp_lphw_hpd_deinit(lphw_hpd);
 	/* Delete the GPIO monitor timer */
 	disable_irq(lphw_hpd->irq);
-	del_timer_sync(&lphw_hpd->gpio_timer);
+	hrtimer_cancel(&lphw_hpd->gpio_timer);
 	gpio_free(lphw_hpd->gpio_cfg.gpio);
 	devm_kfree(lphw_hpd->dev, lphw_hpd);
 }
