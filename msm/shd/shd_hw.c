@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -413,6 +413,19 @@ static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage,
 	cfg->dirty = true;
 }
 
+static void _sde_shd_setup_alpha_out(struct sde_hw_mixer *ctx,
+	uint32_t mixer_op_mode)
+{
+	struct sde_shd_hw_mixer *hw_lm;
+
+	if (!ctx)
+		return;
+
+	hw_lm = container_of(ctx, struct sde_shd_hw_mixer, base);
+
+	hw_lm->mixer_op_mode = mixer_op_mode;
+}
+
 static void _sde_shd_setup_dim_layer(struct sde_hw_mixer *ctx,
 		struct sde_hw_dim_layer *dim_layer)
 {
@@ -453,6 +466,22 @@ void _sde_shd_setup_mixer_out(struct sde_hw_mixer *ctx, struct sde_hw_mixer_cfg 
 	/* do nothing */
 }
 
+static void _sde_shd_flush_hw_pipe_src_split(struct shd_display *display)
+{
+	struct drm_plane *plane;
+	struct sde_plane *psde;
+
+	if (display && display->crtc)
+	{
+		drm_atomic_crtc_for_each_plane(plane, display->crtc) {
+			psde = to_sde_plane(plane);
+			if (psde && psde->pipe_hw->ops.set_src_split_order)
+				psde->pipe_hw->ops.set_src_split_order(psde->pipe_hw,
+					psde->pipe_hw->shd_config.rect_mode, psde->pipe_hw->shd_config.enable);
+		}
+	}
+}
+
 static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 {
 	struct sde_shd_hw_mixer *hw_lm;
@@ -491,6 +520,9 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 				hw_lm->cfg[i].blend_op);
 			hw_lm->cfg[i].dirty = false;
 		}
+	}
+	if (hw_lm->orig->ops.setup_alpha_out) {
+		hw_lm->orig->ops.setup_alpha_out(ctx, hw_lm->mixer_op_mode);
 	}
 }
 
@@ -599,7 +631,7 @@ static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
 	}
 }
 
-void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
+void sde_shd_hw_flush(struct shd_display *display, struct sde_hw_ctl *ctl_ctx,
 		struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
 		struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num)
 {
@@ -620,6 +652,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 	for (i = 0; i < lm_num; i++)
 		_sde_shd_flush_hw_lm(lm_ctx[i]);
 
+	_sde_shd_flush_hw_pipe_src_split(display);
+
 	for (i = 0; i < misr_num; i++)
 		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
 
@@ -631,6 +665,13 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 	SDE_REG_WRITE(c, CTL_FLUSH_MASK, 0);
 
 	spin_unlock_irqrestore(&hw_ctl_lock, lock_flags);
+}
+
+void _sde_shd_setup_pipe_src_split_order(struct sde_hw_pipe *ctx,
+	enum sde_sspp_multirect_index rect_mode, bool enable)
+{
+	if (ctx && ctx->ops.shd_set_src_split_order)
+		ctx->ops.shd_set_src_split_order(ctx, rect_mode, enable);
 }
 
 void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
@@ -656,6 +697,9 @@ void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 	ctx->ops.setup_blend_config =
 			_sde_shd_setup_blend_config;
 
+	ctx->ops.setup_alpha_out =
+			_sde_shd_setup_alpha_out;
+
 	ctx->ops.setup_dim_layer =
 			_sde_shd_setup_dim_layer;
 
@@ -664,6 +708,9 @@ void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 
 	ctx->ops.clear_dim_layer =
 			_sde_shd_clear_dim_layer;
+
+	ctx->ops.setup_pipe_src_split_order =
+			_sde_shd_setup_pipe_src_split_order;
 }
 
 void sde_shd_hw_roi_misr_init_op(struct sde_hw_roi_misr *ctx)

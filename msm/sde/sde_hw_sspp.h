@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -600,6 +600,15 @@ struct sde_hw_sspp_ops {
 			enum sde_sspp_multirect_index index, bool enable);
 
 	/**
+	 * shd_set_src_split_order - cache source split order priority for shd case
+	 * @ctx: Pointer to pipe context
+	 * @index: rectangle index in multirect
+	 * @enable: enable src split order
+	 */
+	void (*shd_set_src_split_order)(struct sde_hw_pipe *ctx,
+			enum sde_sspp_multirect_index index, bool enable);
+
+	/**
 	 * setup_inverse_pma - enable/disable alpha unmultiply unit (PMA)
 	 * @ctx: Pointer to pipe context
 	 * @index: Rectangle index in multirect
@@ -722,6 +731,16 @@ struct sde_hw_sspp_ops {
 	void (*dump)(struct sde_hw_pipe *ctx, bool is_virtual);
 };
 
+/*
+ * struct sde_sspp_shd_cfg - SHD-related config
+ * @rect_mode: rectangle index in multirect
+ * @enable: enable src split order
+ */
+struct sde_sspp_shd_cfg {
+	enum sde_sspp_multirect_index rect_mode;
+	bool enable;
+};
+
 /**
  * struct sde_hw_pipe - pipe description
  * @base: hardware block base structure
@@ -731,6 +750,7 @@ struct sde_hw_sspp_ops {
  * @idx: pipe index
  * @cap: pointer to layer_cfg
  * @ops: pointer to operations possible for this pipe
+ * @shd_config: Cached SHD-related config
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -744,6 +764,9 @@ struct sde_hw_pipe {
 	/* Ops */
 	struct sde_hw_sspp_ops ops;
 	struct sde_hw_ctl *ctl;
+
+	/* Shared display config */
+	struct sde_sspp_shd_cfg shd_config;
 };
 
 /**

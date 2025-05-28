@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  */
 
@@ -70,7 +70,7 @@ struct shd_display {
 void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id,
 		void *phys_init_params);
 
-void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
+void sde_shd_hw_flush(struct shd_display *display, struct sde_hw_ctl *ctl_ctx,
 		struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
 		struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num);
 
