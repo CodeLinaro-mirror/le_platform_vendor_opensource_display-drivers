@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -959,6 +959,8 @@ static int msm_drm_component_init(struct device *dev)
 
 	mutex_init(&priv->vm_client_lock);
 
+	mutex_init(&priv->kms_client_lock);
+
 	/* Bind all our sub-components: */
 	ret = msm_component_bind_all(dev, ddev);
 	if (ret == -EPROBE_DEFER) {
@@ -1048,7 +1050,9 @@ static int msm_drm_component_init(struct device *dev)
 
 	/* create drm client only when fbdev is not supported */
 	if (!priv->fbdev) {
+		mutex_lock(&priv->kms_client_lock);
 		ret = drm_client_init(ddev, &kms->client, "kms_client", NULL);
+		mutex_unlock(&priv->kms_client_lock);
 		if (ret) {
 			DRM_ERROR("failed to init kms_client: %d\n", ret);
 			kms->client.dev = NULL;
@@ -1230,7 +1234,9 @@ static void msm_lastclose(struct drm_device *dev)
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
 	} else if (kms && kms->client.dev) {
+		mutex_lock(&priv->kms_client_lock);
 		rc = drm_client_modeset_commit_locked(&kms->client);
+		mutex_unlock(&priv->kms_client_lock);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 	}
