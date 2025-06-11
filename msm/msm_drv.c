@@ -486,6 +486,7 @@ int msm_get_src_bpc(int chroma_format,
 
 static int msm_drm_uninit(struct device *dev)
 {
+	return 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = ddev->dev_private;
@@ -993,8 +994,9 @@ static int msm_drm_component_init(struct device *dev)
 			DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
 			goto fail;
 		}
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		ret = msm_irq_install(ddev, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		ret = msm_irq_install(ddev, platform_get_irq(pdev, 0));
 #else
 		ret = drm_irq_install(ddev, platform_get_irq(pdev, 0));
