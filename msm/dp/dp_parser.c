@@ -1096,7 +1096,7 @@ static int dp_parser_bond(struct dp_parser *parser)
 
 static u16 swap_u16_endianness(u16 in)
 {
-	return (((u16)((in | 0x00FF) << 8)) | ((u16)((in | 0xFF00) >> 8)));
+	return ((*(((char *)&in)) << 8) | (*(((char *)&in)+1)));
 }
 
 static u16 read_u16_from_byte_stream(const char *data, size_t *offset)
