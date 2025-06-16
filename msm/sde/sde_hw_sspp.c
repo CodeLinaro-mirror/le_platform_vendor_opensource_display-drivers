@@ -328,7 +328,7 @@ static void sde_hw_sspp_shd_set_src_split_order(struct sde_hw_pipe *ctx,
 	ctx->shd_config.rect_mode = rect_mode;
 	ctx->shd_config.enable = enable;
 
-	SDE_INFO("Cache SHD src split");
+	SDE_DEBUG("Cache SHD src split");
 	return;
 }
 
