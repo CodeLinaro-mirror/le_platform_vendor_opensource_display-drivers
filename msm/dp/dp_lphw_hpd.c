@@ -472,6 +472,12 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 		return;
 	status = (isr >> 29) & 0x7;
 
+	if (lphw_hpd->base.skip_isr) {
+		DP_INFO("DP%d ignored isr during dp suspend, hpd isr state: 0x%x\n",
+				lphw_hpd->parser->cell_idx, isr);
+		return;
+	}
+
 	/* Check for uncommon cases */
 	switch (status) {
 	case DP_HPD_STATUS_DISCONNECTED:
