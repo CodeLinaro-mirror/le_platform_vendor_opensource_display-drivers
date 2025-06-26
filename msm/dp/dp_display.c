@@ -251,9 +251,14 @@ static irqreturn_t dp_display_irq(int irq, void *dev_id)
 	}
 
 	/* DP HPD isr */
-	if ((dp->hpd->type == DP_HPD_LPHW) &&
-			!dp_display_state_is(DP_STATE_SUSPENDED))
+	if (dp->hpd->type == DP_HPD_LPHW) {
+		if (dp_display_state_is(DP_STATE_SUSPENDED))
+			dp->hpd->skip_isr = true;
+		else
+			dp->hpd->skip_isr = false;
+
 		dp->hpd->isr(dp->hpd);
+	}
 
 	/* DP controller isr */
 	dp->ctrl->isr(dp->ctrl);

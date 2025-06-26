@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DP_HPD_H_
@@ -66,6 +66,7 @@ struct dp_hpd_cb {
  * @orientation: plug orientation configuration, USBPD type only.
  * @hpd_high: Hot Plug Detect signal is high.
  * @sec_hpd_high: Hot Plug Detect signal is high from secondary hw/sw.
+ * @skip_isr: a flag for if skip the hpd isr process.
  * @hpd_irq: Change in the status since last message
  * @alt_mode_cfg_done: bool to specify alt mode status
  * @multi_func: multi-function preferred, USBPD type only
@@ -85,6 +86,7 @@ struct dp_hpd {
 	u32 orientation;
 	bool hpd_high;
 	bool sec_hpd_high;
+	bool skip_isr;
 	bool hpd_irq;
 	bool alt_mode_cfg_done;
 	bool multi_func;
