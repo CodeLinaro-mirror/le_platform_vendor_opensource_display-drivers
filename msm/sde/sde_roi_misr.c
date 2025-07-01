@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <drm/drm_encoder.h>
@@ -643,9 +643,10 @@ void sde_roi_misr_hw_reset(struct sde_encoder_phys *phys_enc)
 				continue;
 
 			hw_roi_misr->ops.reset_roi_misr(hw_roi_misr);
-			phys_enc->hw_ctl->ops.update_bitmask(
-					phys_enc->hw_ctl, SDE_HW_FLUSH_DSC,
-					hw_roi_misr->idx, true);
+			if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
+				phys_enc->hw_ctl->ops.update_bitmask(
+						phys_enc->hw_ctl, SDE_HW_FLUSH_DSC,
+						hw_roi_misr->idx, true);
 		} else {
 			SDE_INFO("hw roi misr (%d) is null\n", i);
 		}
