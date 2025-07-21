@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __MSM_HYP_IRQ_H__
@@ -9,6 +9,8 @@
 #include <linux/kernel.h>
 
 #include "msm_kms.h"
+
+#define MAX_CTL_PATH_NUM 8
 
 enum msm_hyp_irq_type {
 	MSM_HYP_IRQ_TYPE_NONE = 0,
@@ -90,6 +92,24 @@ struct msm_hyp_irq_controller {
 	u32 dpu_id;
 	unsigned long enabled_mask;
 	struct sde_hw_intr sde_irq;
+	struct virq_data_t *virq_data;
+};
+
+/**
+ * struct irq_metadata_t - struct defining the header for virq shmem
+ * @ctl_mask: mask showing which control paths are enabled for virq
+ * @ctl_irq_enable_mask: an array of masks for each control path showing which virq sources are
+ *                       enabled
+ * @queue_sz: total number of virq in the shmem
+ * @wr_idx: write index in the virq queue
+ * @rd_idx: read index in the virq queue
+ */
+struct irq_metadata_t {
+	uint32_t ctl_mask;
+	uint32_t ctl_irq_enable_mask[MAX_CTL_PATH_NUM];
+	uint32_t queue_sz;
+	uint32_t wr_idx;
+	uint32_t rd_idx;
 };
 
 /**
