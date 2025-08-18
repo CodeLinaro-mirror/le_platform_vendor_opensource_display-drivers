@@ -466,12 +466,14 @@ struct sde_hw_sspp_ops {
 	 * @enable: Boolean to indicate enable or disable of given config
 	 * @index: rectangle index in multirect
 	 * @mode: parallel fetch / time multiplex multirect mode
+	 * @fmt: pixel format
 	 */
 
 	void (*update_multirect)(struct sde_hw_pipe *ctx,
 			bool enable,
 			enum sde_sspp_multirect_index index,
-			enum sde_sspp_multirect_mode mode);
+			enum sde_sspp_multirect_mode mode,
+			const struct sde_format *fmt);
 
 	/**
 	 * setup_sharpening - setup sharpening
@@ -903,6 +905,7 @@ struct sde_hw_sspp_ops {
  * @dpu_idx: dpu index
  * @globl_flush: for next commit perform global flush or local flush
  * @sde_kms: SDE KMS context
+ * @ucsc_cfg: variable to track UCSC configuration register value
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -920,6 +923,7 @@ struct sde_hw_pipe {
 	u32 dpu_idx;
 	bool global_flush;
 	struct sde_kms *sde_kms;
+	u32 ucsc_cfg;
 };
 
 /**

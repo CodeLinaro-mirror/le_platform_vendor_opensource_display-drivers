@@ -3,7 +3,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
-#define pr_fmt(fmt)	"[virtgpu-vq:%s:%d] " fmt, __func__, __LINE__
+#define pr_fmt(fmt)	"[drm:virtgpu-vq:%s:%d] " fmt, __func__, __LINE__
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
@@ -573,7 +573,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if(resp)
+	if (resp)
 		kfree(resp);
 
 	return rc;
@@ -915,8 +915,18 @@ int virtio_gpu_cmd_event_wait(struct virtio_kms *kms,
 static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 		void *buf, size_t len)
 {
-	kms->outputs[scanout].edid = kzalloc(len, GFP_KERNEL);
-	memcpy(kms->outputs[scanout].edid, buf, len);
+	void *new_edid;
+
+	if (!kms || !buf || scanout >= kms->num_scanouts || len == 0)
+		return -EINVAL;
+
+	new_edid = vmemdup(buf, len);
+	if (!new_edid)
+		return -ENOMEM;
+
+	vfree(kms->outputs[scanout].edid);
+	kms->outputs[scanout].edid = new_edid;
+
 	return 0;
 }
 
@@ -957,10 +967,12 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 	VIRTGPU_VQ_RSP_DBG("resp VIRTIO_GPU_CMD_GET_EDID (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-	virtio_get_edid_block(kms,
+	rc = virtio_get_edid_block(kms,
 			scanout,
 			resp->edid,
 			le32_to_cpu(resp->size));
+	if (rc)
+		VIRTGPU_VQ_ERR("virtio_get_edid_block failed, rc=%d\n", rc);
 
 error:
 	if (cmd_p)
@@ -2454,6 +2466,76 @@ int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint
 		kfree(cmd_p);
 	if (resp)
 		kfree(resp);
+
+	return rc;
+}
+
+/**
+ * virtio_gpu_cmd_set_power() - set DPU core power level.
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu core id
+ * @power_level: power level
+ *
+ * The function sends a virtio command to change (negotiate) the power level
+ * for the given DPU core. Host VM shall return the actual power level sets to.
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_gpu_cmd_set_power(struct virtio_kms *kms, uint32_t device_id, uint32_t power_level)
+{
+	int rc = 0;
+
+	struct virtio_gpu_set_power *cmd_p =
+		kzalloc(sizeof(struct virtio_gpu_set_power), GFP_KERNEL);
+	struct virtio_gpu_resp_set_power *resp =
+		kzalloc(sizeof(struct virtio_gpu_resp_set_power), GFP_KERNEL);
+
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+
+	if (!cmd_p || !resp) {
+		VIRTGPU_VQ_ERR("memory alloc failed req %p resp %p for set power\n", cmd_p, resp);
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_POWER);
+	cmd_p->device_id = cpu_to_le32(device_id);
+	cmd_p->power_level = cpu_to_le32(power_level);
+
+	rc = virtio_hab_send_and_recv(hab_socket,
+		kms->channel[client_id],
+		cmd_p,
+		sizeof(struct virtio_gpu_set_power),
+		resp,
+		sizeof(struct virtio_gpu_resp_set_power),
+		NO_SPIN_LOCK_CHANNEL);
+	if (rc) {
+		VIRTGPU_VQ_ERR("virtio cmd to set power for dpu %u level %d failed with error %d\n",
+				device_id, power_level, rc);
+	} else if (resp->error_code) {
+		VIRTGPU_VQ_ERR("Failed to change dpu %d power level %d! error %d  level %d\n",
+				device_id, power_level, resp->error_code, resp->power_level);
+		rc = -EINVAL;
+	} else if (resp->power_level < power_level) {
+		if (!resp->power_level) {
+			VIRTGPU_VQ_ERR("Failed to power up dpu %d level %d! ret level %d\n",
+					device_id, power_level, resp->power_level);
+			rc = -EINVAL;
+		} else {
+			VIRTGPU_VQ_WARN("Set dpu %d power level %d not satisfied! ret level %d\n",
+					device_id, power_level, resp->power_level);
+			rc = -EPERM;
+		}
+	} else {
+		VIRTGPU_VQ_INFO("Set power for dpu %u power level %d successful %d, level %d\n",
+				device_id, power_level, rc, resp->power_level);
+	}
+
+error:
+	kfree(cmd_p);
+	kfree(resp);
 
 	return rc;
 }
