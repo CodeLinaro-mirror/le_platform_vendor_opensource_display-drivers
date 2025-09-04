@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -577,28 +577,6 @@ static void _dp_mst_update_timeslots(struct dp_mst_private *mst,
 #endif
 }
 
-static void _dp_mst_update_single_timeslot(struct dp_mst_private *mst,
-		struct dp_mst_bridge *mst_bridge)
-{
-	int pbn = 0, start_slot = 0, num_slots = 0;
-
-	if (mst->state == PM_SUSPEND) {
-		if (mst_bridge->vcpi) {
-			mst->mst_fw_cbs->get_vcpi_info(&mst->mst_mgr,
-					mst_bridge->vcpi,
-					&start_slot, &num_slots);
-			pbn = mst_bridge->pbn;
-		}
-
-		mst_bridge->num_slots = num_slots;
-
-		mst->dp_display->set_stream_info(mst->dp_display,
-				mst_bridge->dp_panel,
-				mst_bridge->id, start_slot, num_slots, pbn,
-				mst_bridge->vcpi);
-	}
-}
-
 static void _dp_mst_bridge_pre_enable_part1(struct dp_mst_bridge *dp_bridge)
 {
 	struct dp_display *dp_display = dp_bridge->display;
@@ -611,15 +589,6 @@ static void _dp_mst_bridge_pre_enable_part1(struct dp_mst_bridge *dp_bridge)
 
 	DP_MST_DEBUG("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(dp_bridge));
-
-	/* skip mst specific disable operations during suspend */
-	if (mst->state == PM_SUSPEND) {
-		dp_display->wakeup_phy_layer(dp_display, true);
-		drm_dp_send_power_updown_phy(&mst->mst_mgr, port, true);
-		dp_display->wakeup_phy_layer(dp_display, false);
-		_dp_mst_update_single_timeslot(mst, dp_bridge);
-		return;
-	}
 
 	pbn = mst->mst_fw_cbs->calc_pbn_mode(&dp_bridge->dp_mode);
 
@@ -655,10 +624,6 @@ static void _dp_mst_bridge_pre_enable_part2(struct dp_mst_bridge *dp_bridge)
 	DP_MST_DEBUG("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(dp_bridge));
 
-	/* skip mst specific disable operations during suspend */
-	if (mst->state == PM_SUSPEND)
-		return;
-
 	mst->mst_fw_cbs->check_act_status(&mst->mst_mgr);
 
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
@@ -687,11 +652,6 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 	DP_MST_DEBUG("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(dp_bridge));
 
-	/* skip mst specific disable operations during suspend */
-	if (mst->state == PM_SUSPEND) {
-		_dp_mst_update_single_timeslot(mst, dp_bridge);
-		return;
-	}
 
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
@@ -720,14 +680,6 @@ static void _dp_mst_bridge_pre_disable_part2(struct dp_mst_bridge *dp_bridge)
 
 	DP_MST_DEBUG("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY,  DP_MST_CONN_ID(dp_bridge));
-
-	/* skip mst specific disable operations during suspend */
-	if (mst->state == PM_SUSPEND) {
-		dp_display->wakeup_phy_layer(dp_display, true);
-		drm_dp_send_power_updown_phy(&mst->mst_mgr, port, false);
-		dp_display->wakeup_phy_layer(dp_display, false);
-		return;
-	}
 
 	mst->mst_fw_cbs->check_act_status(&mst->mst_mgr);
 
