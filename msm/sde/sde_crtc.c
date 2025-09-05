@@ -28,6 +28,7 @@
 #include <drm/drm_flip_work.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#include <linux/compat.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -6710,8 +6711,13 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		_sde_crtc_set_input_fence_timeout(cstate);
 		break;
 	case CRTC_PROP_DIM_LAYER_V1:
+		if(!in_compat_syscall()){
 		_sde_crtc_set_dim_layer_v1(crtc, cstate,
 					(void __user *)(uintptr_t)val);
+		}else{
+		_sde_crtc_set_dim_layer_v1(crtc, cstate,
+					(void __user *)(uintptr_t)(uint32_t)val);
+		}
 		break;
 	case CRTC_PROP_ROI_V1:
 		ret = _sde_crtc_set_roi_v1(state,
