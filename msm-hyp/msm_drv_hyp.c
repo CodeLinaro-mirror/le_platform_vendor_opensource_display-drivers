@@ -1942,7 +1942,7 @@ static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
 };
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
+static __maybe_unused int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 {
 	struct sg_table *sgt;
 	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(obj);
@@ -2259,8 +2259,11 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 	struct drm_crtc_state *crtc_state;
 	struct msm_hyp_crtc_state *cstate;
 	struct msm_hyp_plane_state *pstate;
+	int i;
+#ifdef DISABLE_IO_COHERENCY
 	struct drm_gem_object *obj;
-	int i, j, ret;
+	int j, ret;
+#endif
 
 	HYP_ATRACE_BEGIN(__func__);
 
@@ -2270,6 +2273,7 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 
 		cstate = to_msm_hyp_crtc_state(crtc->state);
 		drm_atomic_crtc_for_each_plane(plane, crtc) {
+#ifdef DISABLE_IO_COHERENCY
 			/*
 			 * Based on DMA API guide, if same streaming DMA region would be used
 			 * multiple times, and the data would be touched in between the DMA
@@ -2291,6 +2295,7 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 				if (ret)
 					DRM_ERROR("failed to do dumb buffer sync\n");
 			}
+#endif
 			pstate = to_msm_hyp_plane_state(plane->state);
 
 			msm_hyp_sync_wait(pstate->input_fence,
