@@ -969,6 +969,14 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw
 		ops->flush_sync_intf_mux = sde_hw_setup_flush_sync_intf_mux;
 }
 
+static void _setup_virtual_mdp_ops(struct sde_hw_mdp_ops *ops, u32 hw_fence_rev)
+{
+	if (hw_fence_rev) {
+		ops->hw_fence_input_timestamp_ctrl = sde_hw_hw_fence_timestamp_ctrl;
+		ops->hw_fence_input_status = sde_hw_input_hw_fence_status;
+	}
+}
+
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,
 		const struct sde_mdss_cfg *m,
 		void __iomem *addr,
@@ -1022,9 +1030,9 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 	mdp->idx = idx;
 	mdp->caps = cfg;
 	if (mdp->hw.virtual)
-		goto done;
-
-	_setup_mdp_ops(&mdp->ops, mdp->caps->features, m->hw_fence_rev);
+		_setup_virtual_mdp_ops(&mdp->ops, m->hw_fence_rev);
+	else
+		_setup_mdp_ops(&mdp->ops, mdp->caps->features, m->hw_fence_rev);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "mdss_hw", 0,
 			m->mdss_hw_block_size, 0);
@@ -1051,7 +1059,6 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 	}
 	sde_dbg_set_sde_top_offset(mdp->hw.blk_off);
 
-done:
 	return mdp;
 }
 

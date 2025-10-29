@@ -5625,11 +5625,6 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
-	if (!priv->phandle.hw_fence_enable) {
-		SDE_INFO("power vote failed, disabling hw-fencing\n");
-		sde_kms->catalog->hw_fence_rev = 0;
-	}
-
 	/*
 	 * _sde_kms_drm_obj_init should create the DRM related objects
 	 * i.e. CRTCs, planes, encoders, connectors and so forth
@@ -5642,6 +5637,11 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
+	}
+
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
 	}
 
 	return 0;

@@ -173,8 +173,10 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	int i, ctl_id, ret;
 	int iommu_flags;
 
-	if (!hw_ctl || !hw_ctl->ops.hw_fence_output_fence_dir_write_init)
+	if (!hw_ctl || !hw_ctl->ops.hw_fence_output_fence_dir_write_init) {
+		SDE_ERROR("Invalid hw_ctl or callback\n");
 		return -EINVAL;
+	}
 
 	ctl_id = hw_ctl->idx - CTL_0;
 	if (ctl_id >= SDE_HW_FENCE_CLIENT_MAX || ctl_id < 0) {
@@ -250,6 +252,7 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	if (ret) {
 		SDE_ERROR("queue one2one memory smmu map failed, ret:%d ctl_id:%d, client:%d\n",
 			ret, ctl_id, hwfence_data->hw_fence_client_id);
+		sde_hw_fence_deinit(hw_ctl);
 		return ret;
 	}
 
@@ -269,7 +272,8 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 
 	SDE_DEBUG("hwfence registered ctl:%d client:%d handle:0x%pK tx_wm:0x%x wr_idx:0x%x\n",
 		ctl_id, hwfence_data->hw_fence_client_id, hwfence_data->hw_fence_handle,
-		*hwfence_data->txq_tx_wm_va, *hwfence_data->txq_wr_ptr_pa);
+		hwfence_data->txq_tx_wm_va ? *hwfence_data->txq_tx_wm_va : 0,
+		hwfence_data->txq_wr_ptr_pa ? *hwfence_data->txq_wr_ptr_pa : 0);
 
 	return 0;
 }
@@ -293,6 +297,8 @@ void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl)
 	synx_uninitialize(hwfence_data->hw_fence_handle);
 
 	hwfence_data->hw_fence_handle = NULL;
+	hwfence_data->txq_tx_wm_va = NULL;
+	hwfence_data->txq_wr_ptr_pa = NULL;
 }
 
 static int sde_fence_create_hw_fence(struct sde_hw_ctl *hw_ctl, struct sde_fence *sde_fence)

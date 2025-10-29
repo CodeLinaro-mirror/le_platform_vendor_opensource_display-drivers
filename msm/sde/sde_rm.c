@@ -813,7 +813,7 @@ static int _init_hw_fences(struct sde_rm *rm, bool use_ipcc, bool use_soccp,
 		struct sde_kms *sde_kms)
 {
 	struct sde_rm_hw_iter iter;
-	int ret = 0;
+	int initialized = 0, failed = 0;
 
 	sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
 	while (_sde_rm_get_hw_locked(rm, &iter, true)) {
@@ -824,22 +824,29 @@ static int _init_hw_fences(struct sde_rm *rm, bool use_ipcc, bool use_soccp,
 			if (sde_hw_fence_init(ctl, sde_kms, use_ipcc, use_soccp,
 					sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu)) {
 				SDE_DEBUG("failed to init hw_fence idx:%d\n", ctl->idx);
-				ret = -EINVAL;
-				break;
+				failed++;
+				continue;
 			}
 		} else {
 			SDE_DEBUG("failed to init hw_fence idx:%d, no aspace to map memory\n",
 				ctl->idx);
-			ret = -EINVAL;
-			break;
+			failed++;
+			continue;
 		}
+		initialized++;
 		SDE_DEBUG("init hw-fence for ctl %d", iter.blk->id);
 	}
 
-	if (ret)
-		_deinit_hw_fences(rm);
+	/*
+	 * HW-fence availability is per CTL. Keep successfully initialized
+	 * clients and allow failed CTLs to use the existing SW-fence path.
+	 * Disable the global feature only when no CTL can use HW fences.
+	 */
+	if (failed)
+		SDE_INFO("hw-fence init: %d CTLs enabled, %d CTLs use SW fences\n",
+			initialized, failed);
 
-	return ret;
+	return initialized ? 0 : -ENODEV;
 }
 
 static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
