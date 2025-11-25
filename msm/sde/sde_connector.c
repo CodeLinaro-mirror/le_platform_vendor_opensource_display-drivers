@@ -1644,8 +1644,18 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 
 	c_conn = to_sde_connector(connector);
 
-	rc = copy_from_user(&prev_user_fd, (void __user *)val,
+	if (!in_compat_syscall()) {
+		prev_user_fd = 0;
+		rc = copy_from_user(&prev_user_fd, (void __user *)val,
 			sizeof(uint64_t));
+	} else {
+		uint32_t temp_fd = 0;
+
+		rc = copy_from_user(&temp_fd, (void __user *)val,
+			sizeof(uint32_t));
+		prev_user_fd = (uint64_t)(int32_t)temp_fd; // Sign-extend for proper -1 comparison
+	}
+
 	if (rc) {
 		SDE_ERROR("copy from user failed rc:%d\n", rc);
 		rc = -EFAULT;
@@ -1709,6 +1719,16 @@ static int _sde_connector_set_prop_dyn_transfer_time(struct sde_connector *c_con
 	return rc;
 }
 
+static void comapt_connecter_prop_retire_fence(uint64_t *val, uintptr_t *val_user)
+{
+
+	if (in_compat_syscall()) {
+		*val_user = (uint32_t)*val;
+	} else {
+		*val_user = *val;
+	}
+}
+
 static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		struct drm_connector_state *state,
 		struct drm_property *property,
@@ -1717,7 +1737,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	int idx, rc;
-
+	uintptr_t  val_user = 0;
 	if (!connector || !state || !property) {
 		SDE_ERROR("invalid argument(s), conn %pK, state %pK, prp %pK\n",
 				connector, state, property);
@@ -1733,6 +1753,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	if (rc)
 		goto end;
 
+
 	/* connector-specific property handling */
 	idx = msm_property_index(&c_conn->property_info, property);
 	switch (idx) {
@@ -1743,7 +1764,8 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		if (!val)
 			goto end;
 
-		rc = _sde_connector_set_prop_retire_fence(connector, state, val);
+		comapt_connecter_prop_retire_fence(&val, &val_user);
+		rc = _sde_connector_set_prop_retire_fence(connector, state, val_user);
 		break;
 	case CONNECTOR_PROP_ROI_V1:
 		rc = _sde_connector_set_roi_v1(c_conn, c_state,

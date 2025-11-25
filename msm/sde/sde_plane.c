@@ -4244,6 +4244,7 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 	struct sde_plane *psde = plane ? to_sde_plane(plane) : NULL;
 	struct sde_plane_state *pstate;
 	int idx, ret = -EINVAL;
+	uintptr_t val_user;
 
 	SDE_DEBUG_PLANE(psde, "\n");
 
@@ -4275,8 +4276,12 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 						(void *)(uintptr_t)val);
 				break;
 			case PLANE_PROP_EXCL_RECT_V1:
+				if (in_compat_syscall())
+					val_user = (uint32_t)val;
+				else
+					val_user = val;
 				_sde_plane_set_excl_rect_v1(psde, pstate,
-						(void *)(uintptr_t)val);
+						(void *)(uintptr_t)val_user);
 				break;
 			case PLANE_PROP_UBWC_STATS_ROI:
 				_sde_plane_set_ubwc_stats_roi(psde, pstate,

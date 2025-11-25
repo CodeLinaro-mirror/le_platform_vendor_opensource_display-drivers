@@ -6666,6 +6666,36 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
 }
 
+static void compat_crtc_prop_dim_layer_v1(struct drm_crtc *crtc, struct sde_crtc_state *cstate,
+		 uint64_t val)
+{
+	if (!in_compat_syscall()) {
+		_sde_crtc_set_dim_layer_v1(crtc, cstate,
+			(void __user *)(uintptr_t)val);
+	} else {
+		 _sde_crtc_set_dim_layer_v1(crtc, cstate,
+			(void __user *)(uintptr_t)(uint32_t)val);
+	}
+}
+static int compat_prop_output_fence(uint64_t *prev_user_fd, uint64_t val)
+{
+
+	int ret = 0;
+
+	if (in_compat_syscall()) {
+		uint32_t temp_fd = 0;
+		ret = copy_from_user(&temp_fd, (void __user *)(uintptr_t)val,
+				sizeof(uint32_t));
+		*prev_user_fd = (uint64_t)temp_fd;
+	} else {
+		*prev_user_fd = 0;
+		ret = copy_from_user(prev_user_fd, (void __user *)(uintptr_t)val,
+				sizeof(uint64_t));
+	}
+
+	return ret;
+}
+
 /**
  * sde_crtc_atomic_set_property - atomically set a crtc drm property
  * @crtc: Pointer to drm crtc structure
@@ -6711,13 +6741,7 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		_sde_crtc_set_input_fence_timeout(cstate);
 		break;
 	case CRTC_PROP_DIM_LAYER_V1:
-		if(!in_compat_syscall()){
-		_sde_crtc_set_dim_layer_v1(crtc, cstate,
-					(void __user *)(uintptr_t)val);
-		}else{
-		_sde_crtc_set_dim_layer_v1(crtc, cstate,
-					(void __user *)(uintptr_t)(uint32_t)val);
-		}
+		compat_crtc_prop_dim_layer_v1(crtc, cstate, val);
 		break;
 	case CRTC_PROP_ROI_V1:
 		ret = _sde_crtc_set_roi_v1(state,
@@ -6748,8 +6772,7 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		if (!val)
 			goto exit;
 
-		ret = copy_from_user(&prev_user_fd, (void __user *)val,
-				sizeof(uint64_t));
+		ret = compat_prop_output_fence(&prev_user_fd, val);
 		if (ret) {
 			SDE_ERROR("copy from user failed rc:%d\n", ret);
 			ret = -EFAULT;
