@@ -1371,7 +1371,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 	mutex_lock(&dp->session_lock);
 
 	if (dp_display_state_is(DP_STATE_CONNECTED) && !force) {
-		DP_DEBUG("DP%d dp already connected, skipping hpd high\n",
+		DP_INFO("DP%d dp already connected, skipping hpd high\n",
 				dp->cell_idx);
 		mutex_unlock(&dp->session_lock);
 		return -EISCONN;
@@ -2295,7 +2295,8 @@ static void dp_display_connect_work(struct work_struct *work)
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
 
-	if (reset_connector) {
+	DP_INFO("DP%d process hpd high, rc: %d\n", dp->cell_idx, rc);
+	if (!rc && reset_connector) {
 		dp_display_set_misr_reset_skip(&dp->dp_display, true);
 		sde_connector_helper_mode_change_commit(reset_connector);
 		dp_display_set_misr_reset_skip(&dp->dp_display, false);
