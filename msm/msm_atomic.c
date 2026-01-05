@@ -568,7 +568,7 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		funcs = crtc->helper_private;
 
 		if (crtc->state->enable) {
-			DRM_DEBUG_ATOMIC("enabling [CRTC:%d]\n",
+			DRM_INFO("enabling [CRTC:%d]\n",
 					 crtc->base.id);
 
 			if (funcs->atomic_enable)

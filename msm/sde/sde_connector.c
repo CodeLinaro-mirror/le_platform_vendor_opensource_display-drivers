@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2157,12 +2157,14 @@ int sde_connector_helper_mode_change_commit(struct drm_connector *conn)
 	struct drm_atomic_state *state;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *conn_state;
+	ktime_t start, end;
 	int ret;
 
 	state = drm_atomic_state_alloc(conn->dev);
 	if (!state)
 		return -ENOMEM;
 
+	start = ktime_get();
 	drm_modeset_acquire_init(&ctx, 0);
 	state->acquire_ctx = &ctx;
 retry:
@@ -2201,6 +2203,8 @@ end:
 	drm_atomic_state_put(state);
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
+	end = ktime_get();
+	DRM_INFO("mode change took %lld ms\n", ktime_to_ms(ktime_sub(end, start)));
 
 	return ret;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -4115,6 +4115,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 	struct drm_atomic_state *state = NULL;
 	struct sde_kms *sde_kms;
 	int ret = 0, num_crtcs = 0;
+	ktime_t start, end;
 
 	if (!dev)
 		return -EINVAL;
@@ -4135,6 +4136,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 			_sde_kms_null_commit(ddev, enc);
 	}
 
+	start = ktime_get();
 	/* acquire modeset lock(s) */
 	drm_modeset_acquire_init(&ctx, 0);
 
@@ -4242,7 +4244,8 @@ unlock:
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
-
+	end = ktime_get();
+	DRM_INFO("kms suspend took %lld ms\n", ktime_to_ms(ktime_sub(end, start)));
 	/*
 	 * pm runtime driver avoids multiple runtime_suspend API call by
 	 * checking runtime_status. However, this call helps when there is a
@@ -4265,6 +4268,7 @@ static int sde_kms_pm_resume(struct device *dev)
 	struct drm_device *ddev;
 	struct sde_kms *sde_kms;
 	struct drm_modeset_acquire_ctx ctx;
+	ktime_t start, end;
 	int ret, i;
 
 	if (!dev)
@@ -4281,6 +4285,7 @@ static int sde_kms_pm_resume(struct device *dev)
 	if (sde_kms->suspend_state)
 		drm_mode_config_reset(ddev);
 
+	start = ktime_get();
 	drm_modeset_acquire_init(&ctx, 0);
 retry:
 	ret = drm_modeset_lock_all_ctx(ddev, &ctx);
@@ -4314,6 +4319,8 @@ retry:
 end:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
+	end = ktime_get();
+	DRM_INFO("kms resume took %lld ms\n", ktime_to_ms(ktime_sub(end, start)));
 
 	/* enable hot-plug polling */
 	drm_kms_helper_poll_enable(ddev);
