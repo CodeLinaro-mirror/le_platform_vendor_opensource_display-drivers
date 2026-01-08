@@ -4,8 +4,6 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
-#define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
-
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -552,7 +550,7 @@ static void _sde_shd_reset_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 
 	hw_roi_misr = container_of(ctx, struct sde_shd_hw_roi_misr, base);
 	roi_misr_c = &ctx->hw;
-
+	SHD_HW_DEBUG("cur_mask %0X\n", hw_roi_misr->cur_roi_mask);
 	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
 		if (!(hw_roi_misr->cur_roi_mask & BIT(i)))
 			continue;
@@ -561,11 +559,15 @@ static void _sde_shd_reset_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_SIZE(i), 0x0);
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_EXPECTED(i), 0x0);
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), 0x0);
+
+		SHD_HW_DEBUG("write roi[%d] misr reg: 0\n", i);
 	}
 
 	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
 	tmp_hw_mask &= ~hw_roi_misr->cur_roi_mask;
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
+
+	SHD_HW_DEBUG("reset misr[%d] mask %0X\n", hw_roi_misr->orig->idx, tmp_hw_mask);
 }
 
 static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
@@ -585,7 +587,7 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 	roi_info = &hw_roi_misr->misr_cfg;
 
 	_sde_shd_reset_hw_roi_misr(ctx);
-
+	SHD_HW_DEBUG("roi_mask %0X\n", roi_info->roi_mask);
 	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
 		if (!(roi_info->roi_mask & BIT(i)))
 			continue;
@@ -607,6 +609,11 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 			roi_info->golden_value[i]);
 
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), ctrl_val);
+
+		SHD_HW_DEBUG("write roi[%d] misr reg: [x %d, y %d, w %d, h %d], g_val %0X, ctl %0X\n",
+				i, roi_info->misr_roi_rect[i].x, roi_info->misr_roi_rect[i].y,
+				roi_info->misr_roi_rect[i].w, roi_info->misr_roi_rect[i].h,
+				roi_info->golden_value[i], ctrl_val);
 	}
 
 	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
@@ -614,6 +621,8 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 	hw_roi_misr->cur_roi_mask = roi_info->roi_mask;
 	roi_info->roi_mask = 0;
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
+
+	SHD_HW_DEBUG("update misr[%d] mask %0X\n", hw_roi_misr->orig->idx, tmp_hw_mask);
 }
 
 static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)

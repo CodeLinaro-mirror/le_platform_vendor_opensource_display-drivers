@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/slab.h>
@@ -50,7 +50,9 @@ static uint32_t sde_misr_fence_read(struct dma_fence *fence,
 	struct sde_post_commit_fence *post_commit_fence;
 	struct sde_misr_fence *misr_fence;
 	struct sde_sub_fence *sub_fence;
+	struct sde_hw_roi_misr *hw_handle;
 	size_t copy_len;
+	int i;
 
 	if (!fence)
 		return 0;
@@ -65,6 +67,22 @@ static uint32_t sde_misr_fence_read(struct dma_fence *fence,
 	if (copy_to_user(usr_ptr, misr_fence->signature, copy_len)) {
 		pr_err("%s: failed to copy_to_user()\n", __func__);
 		return 0;
+	}
+
+	for (i = 0; i < misr_fence->total_roi_num; i++) {
+		if (misr_fence->signature[i])
+			SDE_FENCE_DEBUG("Fence signature[%d]:0x%0X\n", i, misr_fence->signature[i]);
+		else {
+			SDE_FENCE_INFO("Fence signature[%d]:0x%0X\n", i, misr_fence->signature[i]);
+			hw_handle = misr_fence->misr_hw[i].hw_handle;
+			if (hw_handle) {
+				SDE_FENCE_INFO("roi[%d]: hw cfg, [x %d, y %d, w %d, h %d]\n",
+								i, hw_handle->hw_cfg.misr_roi_rect[i].x,
+								hw_handle->hw_cfg.misr_roi_rect[i].y,
+								hw_handle->hw_cfg.misr_roi_rect[i].w,
+								hw_handle->hw_cfg.misr_roi_rect[i].h);
+			}
+		}
 	}
 
 	return copy_len;
@@ -120,6 +138,7 @@ static int sde_misr_fence_prepare(
 		pr_err("copy fd to user failed rc:%d\n", ret);
 		goto cleanup;
 	}
+	SDE_FENCE_DEBUG("Fence prepare: copy fd to user: %u\n", misr_fence->base.fd);
 
 	return 0;
 
@@ -170,6 +189,7 @@ static bool sde_misr_fence_update(
 		misr_fence->total_roi_num++;
 	}
 
+	SDE_FENCE_DEBUG("Misr fence update\n");
 	sde_roi_misr_setup(&sde_crtc->base);
 	spin_unlock_irqrestore(&sde_crtc->roi_misr_data.misr_lock, flags);
 
@@ -204,6 +224,9 @@ static bool sde_misr_fence_cache_hw_signature(
 		if (success) {
 			misr_fence->signature[i] = signature;
 			misr_fence->signature_mask |= BIT(i);
+			SDE_FENCE_DEBUG("hw%d roi[%d] got val %0X\n", hw_handle->idx, i, misr_fence->signature[i]);
+		} else {
+			SDE_FENCE_DEBUG("hw%d roi[%d] got fail\n", hw_handle->idx, i);
 		}
 	}
 
@@ -228,6 +251,7 @@ static inline void sde_misr_fence_cleanup(struct sde_crtc *sde_crtc)
 		return;
 	}
 
+	SDE_FENCE_DEBUG("Misr fence cleanup\n");
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
 		hw_handle = sde_crtc->mixers[i].hw_roi_misr;
 		hw_ctl = sde_crtc->mixers[i].hw_ctl;

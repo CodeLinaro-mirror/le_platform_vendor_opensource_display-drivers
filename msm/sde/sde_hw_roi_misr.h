@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -69,6 +69,7 @@ struct sde_hw_roi_misr {
 	/* roi_misr */
 	enum sde_roi_misr idx;
 	const struct sde_roi_misr_cfg *caps;
+	struct sde_roi_misr_hw_cfg hw_cfg;
 
 	/* Ops */
 	struct sde_hw_roi_misr_ops ops;
