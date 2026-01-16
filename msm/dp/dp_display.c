@@ -2425,6 +2425,16 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 	if (hpd != sec_hpd) {
 		DP_INFO("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
 				hpd, sec_hpd, sim_mode);
+
+		if (dp->hpd->get_gpio_hpd) {
+			dp->hpd->get_gpio_hpd(dp->hpd);
+			if (dp->hpd->gpio_hpd_high != sec_hpd) {
+				DP_WARN("DP%d Mismatch of sec hpd %d, not update hpd status!\n",
+						dp->cell_idx, sec_hpd);
+				return;
+			}
+		}
+
 		if (sec_hpd) {
 			/*
 			 * DP HPD is low, but GPIO detected HPD is high,

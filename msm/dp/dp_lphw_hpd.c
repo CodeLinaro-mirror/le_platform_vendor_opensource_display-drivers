@@ -702,6 +702,24 @@ static void dp_lphw_hpd_unregister(struct dp_hpd *dp_hpd)
 	devm_free_irq(lphw_hpd->dev, lphw_hpd->irq, lphw_hpd);
 }
 
+static void dp_lphw_hpd_get_gpio_hpd(struct dp_hpd *dp_hpd)
+{
+	struct dp_lphw_hpd_private *lphw_hpd;
+	int hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
+
+	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
+	lphw_hpd->base.gpio_hpd_high = hpd;
+	DP_INFO("DP%d get gpio hpd %d.\n", lphw_hpd->parser->cell_idx,
+			lphw_hpd->base.gpio_hpd_high);
+}
+
 static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
 {
 	struct dp_parser *parser = lphw_hpd->parser;
@@ -838,6 +856,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	lphw_hpd->base.simulate_attention = dp_lphw_hpd_simulate_attention;
 	lphw_hpd->base.register_hpd = dp_lphw_hpd_register;
 	lphw_hpd->base.unregister_hpd = dp_lphw_hpd_unregister;
+	lphw_hpd->base.get_gpio_hpd = dp_lphw_hpd_get_gpio_hpd;
 
 	dp_lphw_hpd_init(lphw_hpd);
 
