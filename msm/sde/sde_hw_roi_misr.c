@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -55,8 +55,10 @@ static void sde_hw_roi_misr_setup(struct sde_hw_roi_misr *ctx,
 	uint32_t ctrl_val = 0;
 	int i;
 
-	spin_lock(&ctx->spin_lock);
+	SDE_HW_MISR_DEBUG("roi_mask %0X\n", roi_info->roi_mask);
+	memset(&ctx->hw_cfg, 0, sizeof(ctx->hw_cfg));
 
+	spin_lock(&ctx->spin_lock);
 	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
 		if (roi_info->roi_mask & BIT(i)) {
 			ctrl_val = ROI_MISR_CTRL_RUN_MODE
@@ -76,17 +78,25 @@ static void sde_hw_roi_misr_setup(struct sde_hw_roi_misr *ctx,
 				roi_info->golden_value[i]);
 
 			SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), ctrl_val);
+
+			SDE_HW_MISR_DEBUG("write roi[%d] misr reg: [x %d, y %d, w %d, h %d], g_val %0X, ctl %0X\n",
+					i, roi_info->misr_roi_rect[i].x, roi_info->misr_roi_rect[i].y,
+					roi_info->misr_roi_rect[i].w, roi_info->misr_roi_rect[i].h,
+					roi_info->golden_value[i], ctrl_val);
 		} else {
 			SDE_REG_WRITE(roi_misr_c, ROI_MISR_POSITION(i), 0x0);
 			SDE_REG_WRITE(roi_misr_c, ROI_MISR_SIZE(i), 0x0);
 			SDE_REG_WRITE(roi_misr_c, ROI_MISR_EXPECTED(i), 0x0);
 			SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), 0x0);
+			SDE_HW_MISR_DEBUG("write roi[%d] misr reg: 0\n", i);
 		}
 	}
 
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, roi_info->roi_mask);
 
 	spin_unlock(&ctx->spin_lock);
+
+	SDE_HW_MISR_DEBUG("hw%d update mask %0X\n", ctx->idx, roi_info->roi_mask);
 }
 
 static void sde_hw_roi_misr_reset(struct sde_hw_roi_misr *ctx)
@@ -102,6 +112,7 @@ static void sde_hw_roi_misr_reset(struct sde_hw_roi_misr *ctx)
 	}
 
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, 0x0);
+	SDE_HW_MISR_DEBUG("reset misr\n");
 }
 
 static bool sde_hw_collect_signature(struct sde_hw_roi_misr *ctx,
@@ -110,6 +121,8 @@ static bool sde_hw_collect_signature(struct sde_hw_roi_misr *ctx,
 	struct sde_hw_blk_reg_map *roi_misr_c = &ctx->hw;
 	uint32_t reg_ctrl_value = 0;
 	uint32_t status = 0;
+	uint32_t position = 0;
+	uint32_t size = 0;
 
 	spin_lock(&ctx->spin_lock);
 
@@ -124,6 +137,13 @@ static bool sde_hw_collect_signature(struct sde_hw_roi_misr *ctx,
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(roi_idx),
 			reg_ctrl_value | ROI_MISR_CTRL_STATUS_CLEAR);
 	}
+
+	position = SDE_REG_READ(roi_misr_c, ROI_MISR_POSITION(roi_idx));
+	ctx->hw_cfg.misr_roi_rect[roi_idx].x = position & 0xFFFF;
+	ctx->hw_cfg.misr_roi_rect[roi_idx].y = (position >> 16) & 0xFFFF;
+	size = SDE_REG_READ(roi_misr_c, ROI_MISR_SIZE(roi_idx));
+	ctx->hw_cfg.misr_roi_rect[roi_idx].w = size & 0xFFFF;
+	ctx->hw_cfg.misr_roi_rect[roi_idx].h = (size >> 16) & 0xFFFF;
 
 	spin_unlock(&ctx->spin_lock);
 

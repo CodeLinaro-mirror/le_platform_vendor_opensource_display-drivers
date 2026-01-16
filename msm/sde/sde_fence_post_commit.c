@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/slab.h>
+#include "sde_dbg.h"
 #include "sde_fence_post_commit.h"
 
 static bool sde_post_commit_fence_is_signaled(struct dma_fence *fence)
@@ -46,6 +47,7 @@ static void sde_post_commit_fence_release(struct dma_fence *fence)
 				post_commit_fence->sub_fence[i]);
 	}
 
+	SDE_FENCE_DEBUG("Post commit fence(%p) release\n", post_commit_fence);
 	kfree(post_commit_fence);
 }
 
@@ -136,6 +138,7 @@ void sde_post_commit_fence_create(
 			return;
 		}
 	}
+	SDE_FENCE_DEBUG("Post commit fence(%p) create\n", post_commit_fence);
 }
 EXPORT_SYMBOL_GPL(sde_post_commit_fence_create);
 
@@ -215,6 +218,7 @@ int sde_post_commit_fence_update(
 		}
 	}
 
+	SDE_FENCE_DEBUG("Post commit fence(%p) update\n", post_commit_fence);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(sde_post_commit_fence_update);
@@ -283,6 +287,7 @@ void sde_post_commit_signal_fence(struct sde_post_commit_fence_context *ctx)
 	sde_post_commit_trigger_fence(ctx);
 
 	sde_fence_helper_signal(&ctx->base);
+	SDE_FENCE_DEBUG("force signal\n");
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
 EXPORT_SYMBOL_GPL(sde_post_commit_signal_fence);
@@ -312,6 +317,7 @@ void sde_post_commit_signal_sub_fence(
 			post_commit_fence->sub_fence[type], false)) {
 		post_commit_fence->trigger_mask |= BIT(type);
 		sde_fence_helper_signal(&ctx->base);
+		SDE_FENCE_DEBUG("signal sub-fence\n");
 	}
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }

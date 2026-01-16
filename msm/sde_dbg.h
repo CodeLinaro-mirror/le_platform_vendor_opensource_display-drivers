@@ -211,6 +211,59 @@ struct sde_dbg_reglog {
 extern struct sde_dbg_reglog *sde_dbg_base_reglog;
 
 /**
+ * SDE_LOG_DEBUG - debug print helper
+ */
+#define SDE_LOG_DEBUG(prefix, fmt, ...) \
+	do { \
+		if (drm_debug_enabled(DRM_UT_KMS)) \
+			DRM_DEBUG("[" prefix ":][T%-4d]" fmt, \
+				current->pid, ##__VA_ARGS__); \
+	} while (0)
+
+/**
+ * SDE_LOG_INFO - info print helper
+ */
+#define SDE_LOG_INFO(prefix, fmt, ...) \
+	pr_info("[" prefix ":%s:%d][T%-4d]" fmt, \
+		__func__, __LINE__, current->pid, ##__VA_ARGS__)
+
+/**
+ * SDE_FENCE_DEBUG - Emit a debug log message for fence-MISR operations
+ */
+#define SDE_FENCE_DEBUG(fmt, ...) \
+	SDE_LOG_DEBUG("drm-fence-misr", fmt, ##__VA_ARGS__)
+
+/**
+ * SDE_FENCE_INFO - Emit an informational log message for fence-MISR operations
+ */
+#define SDE_FENCE_INFO(fmt, ...) \
+	SDE_LOG_INFO("drm-fence-misr", fmt, ##__VA_ARGS__)
+
+/**
+ * SDE_HW_MISR_DEBUG - Emit debug logs for HW MISR activity
+ */
+#define SDE_HW_MISR_DEBUG(fmt, ...) \
+	SDE_LOG_DEBUG("drm-hw-misr", fmt, ##__VA_ARGS__)
+
+/**
+ * SDE_HW_MISR_INFO - Emit informational logs for HW MISR activity
+ */
+#define SDE_HW_MISR_INFO(fmt, ...) \
+	SDE_LOG_INFO("drm-hw-misr", fmt, ##__VA_ARGS__)
+
+/**
+ * SHD_HW_DEBUG - Emit debug logs for DRM SHD hardware activity
+ */
+#define SHD_HW_DEBUG(fmt, ...) \
+	SDE_LOG_DEBUG("drm-shd", fmt, ##__VA_ARGS__)
+
+/**
+ * SHD_HW_INFO - Emit informational logs for DRM SHD hardware activity
+ */
+#define SHD_HW_INFO(fmt, ...)  \
+	SDE_LOG_INFO("drm-shd", fmt, ##__VA_ARGS__)
+
+/**
  * SDE_REG_LOG - Write register write to the register log
  */
 #define SDE_REG_LOG(blk_id, val, addr) sde_reglog_log(blk_id, val, addr)
