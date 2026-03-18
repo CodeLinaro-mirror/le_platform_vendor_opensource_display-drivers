@@ -3198,6 +3198,9 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	int rc = 0;
 	uint32_t scanout;
 
+	kms->has_edid = true;
+	VIRTIO_KMS_INFO("EDID support available.\n");
+
 //	if (virtio_has_feature(kms->vdev, VIRTIO_GPU_F_EDID)) {
 //		kms->has_edid = true;
 //		DRM_INFO("EDID support available.\n");
