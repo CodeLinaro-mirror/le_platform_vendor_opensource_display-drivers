@@ -1,0 +1,5 @@
+display-kernel-headers (1.0.0) unstable; urgency=medium
+
+  * Initial release.
+
+ -- Wei Mo <wem@qti.qualcomm.com>  Fri, 27 Mar 2026 00:00:00 +0000

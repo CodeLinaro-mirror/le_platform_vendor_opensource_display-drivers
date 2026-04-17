@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+UAPI_SRC := include/uapi/display
+
+DRM_HEADERS   := msm_drm_pp.h sde_drm.h msm_drm_aiqe.h
+MEDIA_HEADERS := mmm_color_fmt.h msm_sde_rotator.h
+
+DESTDIR := debian/display-kernel-headers-dev/usr/include
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+override_dh_auto_configure:
+override_dh_auto_build:
+override_dh_auto_test:
+
+override_dh_auto_install:
+	install -d $(DESTDIR)/drm $(DESTDIR)/media
+	install -d $(DESTDIR)/display/drm $(DESTDIR)/display/media
+	for f in $(DRM_HEADERS); do \
+	    install -m 0644 $(UAPI_SRC)/drm/$$f $(DESTDIR)/drm/; \
+	    install -m 0644 $(UAPI_SRC)/drm/$$f $(DESTDIR)/display/drm/; \
+	done
+	for f in $(MEDIA_HEADERS); do \
+	    install -m 0644 $(UAPI_SRC)/media/$$f $(DESTDIR)/media/; \
+	    install -m 0644 $(UAPI_SRC)/media/$$f $(DESTDIR)/display/media/; \
+	done
+
+override_dh_install:
+override_dh_strip:
+override_dh_shlibdeps:

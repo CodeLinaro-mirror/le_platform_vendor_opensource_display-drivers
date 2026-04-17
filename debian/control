@@ -1,0 +1,10 @@
+Source: display-kernel-headers
+Section: devel
+Priority: optional
+Maintainer: Wei Mo <wem@qti.qualcomm.com>
+Build-Depends: debhelper-compat (= 13)
+
+Package: display-kernel-headers-dev
+Architecture: arm64
+Description: Display driver kernel UAPI headers
+ DRM and media UAPI headers from Qualcomm display-drivers.
