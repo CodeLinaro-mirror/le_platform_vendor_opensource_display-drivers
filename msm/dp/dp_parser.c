@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -241,6 +241,16 @@ static int dp_parser_misc(struct dp_parser *parser)
 			"qcom,dp-sec-hpd-check-delay-ms", &parser->sec_hpd_check_delay_ms);
 	if (rc)
 		parser->sec_hpd_check_delay_ms = 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,default-link-rate", &parser->default_link_rate);
+	if (rc)
+		parser->default_link_rate = 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,default-num-lanes", &parser->default_num_lanes);
+	if (rc)
+		parser->default_num_lanes = 0;
 
 	return 0;
 }

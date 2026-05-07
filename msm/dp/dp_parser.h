@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -390,6 +390,8 @@ struct dp_parser {
 	u32 gpio_hpd_high_debounce_ms;
 	u32 gpio_hpd_low_debounce_ms;
 	u32 sec_hpd_check_delay_ms;
+	u32 default_link_rate;
+	u32 default_num_lanes;
 
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);

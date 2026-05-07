@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1778,8 +1778,19 @@ static int dp_panel_set_default_link_params(struct dp_panel *dp_panel)
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
 	link_info = &dp_panel->link_info;
-	link_info->rate = default_bw_code;
-	link_info->num_lanes = default_num_lanes;
+
+	if (panel->parser && panel->parser->default_link_rate
+			&& panel->parser->default_num_lanes) {
+		DP_DEBUG("DP%d set default link_rate=%d num_lanes=%d\n",
+				panel->parser->cell_idx,
+				panel->parser->default_link_rate,
+				panel->parser->default_num_lanes);
+		link_info->rate = panel->parser->default_link_rate;
+		link_info->num_lanes = panel->parser->default_num_lanes;
+	} else {
+		link_info->rate = default_bw_code;
+		link_info->num_lanes = default_num_lanes;
+	}
 	DP_DEBUG("DP%d link_rate=%d num_lanes=%d\n",
 			panel->parser->cell_idx, link_info->rate, link_info->num_lanes);
 
