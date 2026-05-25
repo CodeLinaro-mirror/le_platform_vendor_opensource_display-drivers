@@ -2264,9 +2264,18 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		return 1;
 	} else if (dp_panel->edid_ctrl->edid) {
 		return _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
+	} else if (dp_panel->pinfo.h_active > 0 &&
+			dp_panel->pinfo.v_active > 0) {
+		DP_INFO("DP%d using native mode %dx%d",
+			panel->parser->cell_idx,
+			dp_panel->pinfo.h_active,
+			dp_panel->pinfo.v_active);
+		memcpy(&mode->timing, &dp_panel->pinfo, sizeof(dp_panel->pinfo));
+		return 1;
 	}
 
 	/* fail-safe mode */
+	DP_INFO("fail_safe mode\n");
 	memcpy(&mode->timing, &fail_safe,
 		sizeof(fail_safe));
 	return 1;
