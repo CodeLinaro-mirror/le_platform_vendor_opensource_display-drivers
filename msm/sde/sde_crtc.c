@@ -1122,6 +1122,9 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 						cstate->lm_roi[i].y;
 		}
 
+		split_dim_layer.rect.x += sde_crtc->offset_x;
+		split_dim_layer.rect.y += sde_crtc->offset_y;
+
 		/* update dim layer rect for panel stacking crtc */
 		if (cstate->line_insertion.padding_height)
 			_sde_crtc_calc_split_dim_layer_yh_param(crtc, &split_dim_layer.rect.y,
@@ -2176,6 +2179,40 @@ static void _sde_crtc_setup_blend_cfg_by_stage(struct sde_crtc_mixer *mixer,
 	}
 }
 
+static void _sde_crtc_update_pipe_active(struct sde_plane *psde,
+		struct sde_plane_state *pstate, struct drm_framebuffer *fb,
+		struct drm_plane *plane, unsigned long *active_fetch_pipes,
+		unsigned long *active_pipes)
+{
+	bool is_rec_only = sde_hw_sspp_multirect_rec0_only(psde->pipe_hw->cap) ||
+			   sde_hw_sspp_multirect_rec1_only(psde->pipe_hw->cap);
+	bool pipe_on = fb ? true : false;
+	u32 cac_mode;
+
+	/*
+	 * rec0/rec1-only: GVM-exclusive pipe, use SSPP-level
+	 * active registers to avoid CTL register conflict with PVM.
+	 */
+	if (!is_rec_only)
+		set_bit(sde_plane_pipe(plane), active_fetch_pipes);
+
+	if (psde->pipe_hw->ops.set_active_fetch_pipe)
+		psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+				pstate->multirect_index, pipe_on);
+
+	if (is_rec_only && psde->pipe_hw->ops.set_active_pipe)
+		psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+				pstate->multirect_index, pipe_on);
+
+	cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+	if (cac_mode != SDE_CAC_UNPACK && !is_rec_only) {
+		set_bit(sde_plane_pipe(plane), active_pipes);
+		if (psde->pipe_hw->ops.set_active_pipe)
+			psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+					pstate->multirect_index, pipe_on);
+	}
+}
+
 static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 		struct plane_state *pstates,
 		struct sde_crtc_mixer *mixer,
@@ -2226,18 +2263,9 @@ static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 			mode = sde_plane_get_property(pstate,
 					PLANE_PROP_FB_TRANSLATION_MODE);
 
-			set_bit(sde_plane_pipe(plane), active_fetch_pipes);
-			if (psde->pipe_hw->ops.set_active_fetch_pipe)
-				psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
-						pstate->multirect_index,fb ? true : false);
-
+			_sde_crtc_update_pipe_active(psde, pstate, fb, plane,
+					active_fetch_pipes, active_pipes);
 			cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
-			if (cac_mode != SDE_CAC_UNPACK) {
-				set_bit(sde_plane_pipe(plane), active_pipes);
-				if (psde->pipe_hw->ops.set_active_pipe)
-					psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
-							pstate->multirect_index, fb ? true : false);
-			}
 			sde_plane_ctl_flush(plane, ctl, true);
 		} else {
 			if (psde->pipe_hw->ops.set_flush_type)
@@ -2385,10 +2413,15 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			pstates, cnt);
 
 	if (!isLocalFlush) {
-		if (ctl->ops.set_active_fetch_pipes)
+		/* For virtual CTLs, skip if pipe_active_mask == 0 (all GVM pipes are REC-only
+		 * and have no CTL representation). For dedicated CTLs, always write.
+		 */
+		if (ctl->ops.set_active_fetch_pipes &&
+				(!ctl->hw.virtual || ctl->caps->pipe_active_mask))
 			ctl->ops.set_active_fetch_pipes(ctl, active_fetch_pipes);
 
-		if (ctl->ops.set_active_pipes)
+		if (ctl->ops.set_active_pipes &&
+				(!ctl->hw.virtual || ctl->caps->pipe_active_mask))
 			ctl->ops.set_active_pipes(ctl, active_pipes);
 
 		/* Force global flush when adding/removing sspp or mixer stage */
@@ -3056,7 +3089,8 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 	for (i = 0; i < num_mixers; i++) {
 		if (!cstate->is_loopback_mode && (!sde_crtc->mixers[i].hw_lm ||
 			!sde_crtc->mixers[i].hw_ctl ||
-			!sde_crtc->mixers[i].hw_ds)) {
+			(sde_crtc->mixers[i].hw_lm->cap->ds != DS_MAX &&
+			!sde_crtc->mixers[i].hw_ds))) {
 			SDE_ERROR("%s:insufficient resources for mixer(%d)\n",
 				sde_crtc->name, i);
 			SDE_EVT32(DRMID(&sde_crtc->base), sde_crtc->num_mixers,
@@ -3064,6 +3098,10 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 				sde_crtc->mixers[i].hw_ctl,
 				sde_crtc->mixers[i].hw_ds, SDE_EVTLOG_ERROR);
 			return -EINVAL;
+		} else if (sde_crtc->mixers[i].hw_lm &&
+				sde_crtc->mixers[i].hw_lm->cap->ds == DS_MAX) {
+			SDE_ERROR("%s: dest scaler not supported for mixer(%d)\n",
+					sde_crtc->name, i);
 		}
 	}
 
@@ -3158,30 +3196,47 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	}
 }
 
-static void _sde_crtc_put_frame_data_buffer(struct sde_frame_data_buffer *buf)
+/* This will put all frame data buffers from (and including) start_idx */
+static void _sde_crtc_put_frame_data_buffers_from(struct sde_crtc *sde_crtc, uint32_t start_idx)
 {
-	if (!buf)
+	struct sde_frame_data_buffer *buf;
+	int i;
+
+	if (start_idx >= SDE_FRAME_DATA_BUFFER_MAX)
 		return;
 
-	msm_gem_put_buffer(buf->gem);
-	kfree(buf);
-	buf = NULL;
+	for (i = start_idx; i < SDE_FRAME_DATA_BUFFER_MAX; i++) {
+		buf = sde_crtc->frame_data.buf[i];
+		if (!buf)
+			break;
+
+		if (buf->fb)
+			drm_framebuffer_put(buf->fb);
+		msm_gem_put_buffer(buf->gem);
+
+		kfree(buf);
+		sde_crtc->frame_data.buf[i] = NULL;
+		sde_crtc->frame_data.cnt--;
+	}
+
+	if (sde_crtc->frame_data.idx >= sde_crtc->frame_data.cnt)
+		sde_crtc->frame_data.idx = 0;
 }
 
 static int _sde_crtc_get_frame_data_buffer(struct drm_crtc *crtc, uint32_t fd)
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_frame_data_buffer *buf;
-	uint32_t cur_buf;
 
 	sde_crtc = to_sde_crtc(crtc);
-	cur_buf = sde_crtc->frame_data.cnt;
 
 	buf = kzalloc(sizeof(struct sde_frame_data_buffer), GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
-	sde_crtc->frame_data.buf[cur_buf] = buf;
+	sde_crtc->frame_data.buf[sde_crtc->frame_data.cnt] = buf;
+	sde_crtc->frame_data.cnt++;
+
 	buf->fd = fd;
 	buf->fb = drm_framebuffer_lookup(crtc->dev, NULL, fd);
 	if (!buf->fb) {
@@ -3204,6 +3259,7 @@ static void _sde_crtc_set_frame_data_buffers(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_drm_frame_data_buffers_ctrl ctrl;
+	uint32_t old_cnt;
 	int i, ret;
 
 	if (!crtc || !cstate || !usr)
@@ -3217,28 +3273,32 @@ static void _sde_crtc_set_frame_data_buffers(struct drm_crtc *crtc,
 		return;
 	}
 
+	spin_lock(&sde_crtc->frame_data_lock);
+
 	if (!ctrl.num_buffers) {
 		SDE_DEBUG("clearing frame data buffers");
+		_sde_crtc_put_frame_data_buffers_from(sde_crtc, 0);
 		goto exit;
-	} else if (ctrl.num_buffers > SDE_FRAME_DATA_BUFFER_MAX) {
-		SDE_ERROR("invalid number of buffers %d", ctrl.num_buffers);
-		return;
 	}
 
+	if (ctrl.num_buffers + sde_crtc->frame_data.cnt > SDE_FRAME_DATA_BUFFER_MAX) {
+		SDE_ERROR("invalid number of buffers %d, cur num:%d", ctrl.num_buffers,
+				sde_crtc->frame_data.cnt);
+		goto exit;
+	}
+
+	old_cnt = sde_crtc->frame_data.cnt;
 	for (i = 0; i < ctrl.num_buffers; i++) {
 		if (_sde_crtc_get_frame_data_buffer(crtc, ctrl.fds[i])) {
 			SDE_ERROR("unable to set buffer for fd %d", ctrl.fds[i]);
-			goto exit;
+			_sde_crtc_put_frame_data_buffers_from(sde_crtc, old_cnt);
+			break;
 		}
-		sde_crtc->frame_data.cnt++;
 	}
 
-	return;
 exit:
-	while (sde_crtc->frame_data.cnt--)
-		_sde_crtc_put_frame_data_buffer(
-				sde_crtc->frame_data.buf[sde_crtc->frame_data.cnt]);
-	sde_crtc->frame_data.cnt = 0;
+	spin_unlock(&sde_crtc->frame_data_lock);
+	return;
 }
 
 static void _sde_crtc_frame_data_notify(struct drm_crtc *crtc,
@@ -3275,6 +3335,8 @@ void sde_crtc_get_frame_data(struct drm_crtc *crtc)
 		return;
 
 	sde_crtc = to_sde_crtc(crtc);
+
+	spin_lock(&sde_crtc->frame_data_lock);
 	frame_data = &sde_crtc->frame_data;
 
 	if (frame_data->cnt) {
@@ -3298,6 +3360,7 @@ void sde_crtc_get_frame_data(struct drm_crtc *crtc)
 
 	if (frame_data->cnt)
 		_sde_crtc_frame_data_notify(crtc, data);
+	spin_unlock(&sde_crtc->frame_data_lock);
 }
 
 static void sde_crtc_frame_event_cb(void *data, u32 event, ktime_t ts)
@@ -3307,7 +3370,7 @@ static void sde_crtc_frame_event_cb(void *data, u32 event, ktime_t ts)
 	struct msm_drm_private *priv;
 	struct sde_crtc_frame_event *fevent;
 	struct sde_kms_frame_event_cb_data *cb_data;
-	unsigned long flags;
+	unsigned long flags = 0;
 	u32 crtc_id;
 
 	cb_data = (struct sde_kms_frame_event_cb_data *)data;
@@ -9092,6 +9155,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	mutex_init(&sde_crtc->crtc_lock);
 	spin_lock_init(&sde_crtc->spin_lock);
 	spin_lock_init(&sde_crtc->event_spin_lock);
+	spin_lock_init(&sde_crtc->frame_data_lock);
 	atomic_set(&sde_crtc->frame_pending, 0);
 
 	sde_crtc->enabled = false;

@@ -22,6 +22,19 @@
 		(e) && (e)->base.hw_intf ? \
 		(e)->base.hw_intf->idx - INTF_0 : -1, ##__VA_ARGS__)
 
+#define SDE_CTL_FLUSH_CTL_LM_MASK  (BIT(17) |        /* CTL       */ \
+					BIT(6)  |        /* LM0       */ \
+					BIT(7)  |        /* LM1       */ \
+					BIT(8)  |        /* LM2       */ \
+					BIT(9)  |        /* LM3       */ \
+					BIT(10) |        /* LM4       */ \
+					BIT(20) |        /* LM5       */ \
+					BIT(21) |        /* LM6       */ \
+					BIT(27) |        /* LM7       */ \
+					BIT(30) |        /* PERIPH    */ \
+					BIT(31))         /* INTF      */
+
+
 #define to_sde_encoder_phys_hyp(x) \
 	container_of(x, struct sde_encoder_phys_hyp, base)
 
@@ -62,7 +75,7 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	struct sde_cesta_scc_status scc_status = {0, };
 	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 	unsigned long lock_flags;
-	u32 flush_register = ~0;
+	u32 flush_complete_register = ~0;
 	u32 reset_status = 0;
 	int new_cnt = -1, old_cnt = -1;
 	u32 event = 0;
@@ -87,17 +100,19 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 
 	old_cnt = atomic_read(&phys_enc->pending_kickoff_cnt);
 
-	if (hw_ctl->ops.get_flush_register)
-		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+	if (hw_ctl->ops.get_flush_complete_register)
+		flush_complete_register = hw_ctl->ops.get_flush_complete_register(hw_ctl);
 
-	if (flush_register & hw_ctl->flush.pending_flush_mask)
+	if (flush_complete_register & hw_ctl->flush.pending_flush_mask
+		& ~SDE_CTL_FLUSH_CTL_LM_MASK)
 		goto not_flushed;
 
 	/*
 	 * When flush_mask is changed to 0, we need additional vsync
 	 * to make sure the detach flush is done
 	 */
-	if (flush_register && !hw_ctl->flush.pending_flush_mask && hw_ctl->flush.previous_flush_mask) {
+	if (flush_complete_register && !hw_ctl->flush.pending_flush_mask
+		&& hw_ctl->flush.previous_flush_mask) {
 		hw_ctl->flush.previous_flush_mask = 0;
 		goto not_flushed;
 	}
@@ -131,13 +146,13 @@ not_flushed:
 		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf,
 			&intf_status);
 
-	if (flush_register && hw_ctl->ops.get_hw_fence_status)
+	if (flush_complete_register && hw_ctl->ops.get_hw_fence_status)
 		fence_ready = hw_ctl->ops.get_hw_fence_status(hw_ctl);
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
 			old_cnt, atomic_read(&phys_enc->pending_kickoff_cnt),
 			reset_status ? SDE_EVTLOG_ERROR : 0,
-			flush_register, event,
+			flush_complete_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
 			fence_ready, DPUID(phys_enc->sde_kms));
