@@ -3343,23 +3343,6 @@ exit:
 }
 
 #ifdef HAB_VIRQ_FEATURE_ENABLE
-/**
- * is_dbl_handle_valid() - Checks is a doorbell handle is valid.
- * @hab_dbl_handle: doorbell handle
- *
- * Return: true/false
- *
- */
-bool is_dbl_handle_valid(int32_t hab_dbl_handle)
-{
-	if (hab_dbl_handle > HAB_DBL_HANDLE_NONE &&
-		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
-	{
-		return true;
-	} else {
-		return false;
-	}
-}
 
 /**
  * hab_virq_cb() - Callback function triggered when a virq is received.
@@ -3381,7 +3364,7 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 
 	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
 
-	if (is_dbl_handle_valid(virq_info->hab_dbl_handle))
+	if (virq_info->hab_dbl_handle != 0)
 	{
 		/*
 		 * dpu_id is stored directly in virq_info at registration time,
@@ -3413,13 +3396,14 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
 	{
 		struct virq_info_t *virq_info = kzalloc(sizeof(struct virq_info_t), GFP_KERNEL);
-		virq_info->hab_dbl_handle = -1;
+		virq_info->hab_dbl_handle = 0; // invalidate hab doorbell handle is 0
 		virq_info->kms = kms;
 		ret = habmm_virq_register(&dbl_handle, pvm_hab_vmid, virq_dpu_id[virq_idx], hab_virq_cb,
 				virq_info, HABMM_VIRQ_FLAGS_RX);
-		if (ret != 0 || !is_dbl_handle_valid(dbl_handle))
+		if (ret != 0 || dbl_handle == 0)
 		{
-			VIRTIO_KMS_ERR("Error registering for doorbell %d. Error Code %d\n", virq_idx, ret);
+			VIRTIO_KMS_ERR("Error registering for virq_disp%d. Error Code %d\n",
+				virq_idx + 1, ret);
 			return ret;
 		}
 		virq_info->hab_dbl_handle = dbl_handle;
