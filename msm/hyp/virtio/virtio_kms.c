@@ -490,8 +490,14 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	case PANEL_ROTATE_NONE:
 		sde_kms_info_add_keystr(info, "panel orientation", "none");
 		break;
+	case PANEL_ROTATE_90:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 90");
+		break;
 	case PANEL_ROTATE_180:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz & vert flip");
+		break;
+	case PANEL_ROTATE_270:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 270");
 		break;
 	case PANEL_ROTATE_H_FLIP:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz flip");
@@ -1845,15 +1851,31 @@ static void _validate_and_set_mixer_blend_stages(struct sde_mdss_cfg *hyp_cfg,
 }
 
 static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
-		unsigned long *avail_pipes, u32 disp_idx)
+		unsigned long *avail_pipes, struct virtio_kms_output *output,
+		u32 disp_idx)
 {
-	int i;
+	int i, k;
+	bool rec_only;
 
 	if (!avail_pipes)
 		return;
 
 	for (i = 0; i < SSPP_MAX; i++) {
-		if (test_bit(i, avail_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+		if (!test_bit(i, avail_pipes) || pipe_active_tbl[i] == CTL_INVALID_BIT)
+			continue;
+
+		/* Skip REC-only pipes — they use SSPP-level active registers */
+		rec_only = false;
+		for (k = 0; k < output->plane_cnt; k++) {
+			if (output->plane_caps[k].sspp_id != i)
+				continue;
+			if (output->plane_caps[k].rect_mask == 0x1 ||
+					output->plane_caps[k].rect_mask == 0x2)
+				rec_only = true;
+			break;
+		}
+
+		if (!rec_only)
 			hyp_cfg->pipe_active_mask[disp_idx] |= BIT(pipe_active_tbl[i]);
 	}
 }
@@ -1877,7 +1899,7 @@ static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 
 			hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
 
-			if (output->plane_caps[k].rect_mask & 0x3) {
+			if ((output->plane_caps[k].rect_mask & 0x3) == 0x3) {
 				// Keep original smart dma feature
 				/*
 				 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
@@ -2382,7 +2404,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 		/* Process hardware blocks using helper functions */
 		_process_sspp_blocks(hyp_cfg, sde_cfg, output, avail_pipes[i], i);
-		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], i);
+		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], output, i);
 		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x, i %d\n",
 				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask[i], i);
 
@@ -3334,7 +3356,7 @@ bool is_dbl_handle_valid(int32_t hab_dbl_handle)
 		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
 	{
 		return true;
-	 } else {
+	} else {
 		return false;
 	}
 }
@@ -3352,19 +3374,20 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 {
 	struct virq_info_t *virq_info = (struct virq_info_t *) irq_data;
 	uint32_t dpu_id;
-	uint32_t dbl_idx;
 	struct msm_kms *msm_kms = NULL;
+
+	if (irq_data == NULL)
+		return 0;
 
 	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
 
-	if (is_dbl_handle_valid(virq_info->hab_dbl_handle) && irq_data != NULL)
+	if (is_dbl_handle_valid(virq_info->hab_dbl_handle))
 	{
-		/* dbl handle is either 1 or 2 in Android GVM, 3 or 4 in Linux GVM
-		Both GVMs are mutually exclusive and share the same virq_info[2] array
-		The module maps handle 1->0, 2->1, 3->0, 4->1 intentionally. */
-		dbl_idx = (virq_info->hab_dbl_handle - 1) % VIRTIO_GPU_MAX_VIRQ;
-
-		dpu_id = virq_info->kms->virq_info[dbl_idx]->dpu_id;
+		/*
+		 * dpu_id is stored directly in virq_info at registration time,
+		 * so the callback reads it without any dependency on dbl_handle values.
+		 */
+		dpu_id = virq_info->dpu_id;
 		msm_kms = &virq_info->kms->base.sde_kms[dpu_id]->base;
 		msm_hyp_irq(msm_kms);
 	}
@@ -3383,7 +3406,8 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 {
 	int32_t dbl_handle = -1;
 	const uint32_t pvm_hab_vmid = 0x0;
-	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {3001,3002}; /* dpu id as defined by HAB */
+	/* dpu id as defined by HAB */
+	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {VIRQ_DISP1, VIRQ_DISP2};
 	int ret = -1;
 
 	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
@@ -3399,9 +3423,10 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 			return ret;
 		}
 		virq_info->hab_dbl_handle = dbl_handle;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ] = virq_info;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ]->dpu_id = virq_idx;
-		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d\n", dbl_handle);
+		kms->virq_info[virq_idx] = virq_info;
+		kms->virq_info[virq_idx]->dpu_id = virq_idx;
+		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d, dpu_id: %d\n",
+				dbl_handle, virq_idx);
 	}
 
 	return 0;
