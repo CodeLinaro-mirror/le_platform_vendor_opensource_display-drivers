@@ -1978,6 +1978,74 @@ static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 	}
 }
 
+static u32 _virtio_kms_default_demura_mask(enum sde_sspp pipe, u32 rect)
+{
+	switch (pipe) {
+	case SSPP_DMA1:
+	case SSPP_DMA3:
+		return rect ? (BIT(DEMURA_1) | BIT(DEMURA_3)) :
+			(BIT(DEMURA_0) | BIT(DEMURA_2));
+	default:
+		return ~0x0;
+	}
+}
+
+static void _process_demura_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int k, rect;
+	u32 demura_dspp_count = 0;
+	bool exposed = false;
+
+	if (!sde_cfg->demura_count)
+		return;
+
+	/* Count only Demura-capable DSPPs assigned to this scanout. */
+	for (k = 0; k < hyp_cfg->dspp_count; k++) {
+		struct sde_dspp_cfg *dspp = &hyp_cfg->dspp[k];
+
+		if (dspp->display_idx != disp_idx ||
+				!test_bit(SDE_DSPP_DEMURA, &dspp->features))
+			continue;
+
+		demura_dspp_count++;
+	}
+
+	if (!demura_dspp_count)
+		return;
+
+	for (k = 0; k < output->plane_cnt; k++) {
+		enum sde_sspp pipe = output->plane_caps[k].sspp_id;
+
+		if (!SDE_SSPP_VALID_DMA(pipe))
+			continue;
+
+		for (rect = 0; rect < 2; rect++) {
+			u32 mask = sde_cfg->demura_supported[pipe][rect];
+
+			if (mask == ~0x0 || !mask)
+				mask = _virtio_kms_default_demura_mask(pipe, rect);
+			if (mask == ~0x0 || !mask)
+				continue;
+
+			hyp_cfg->demura_supported[pipe][rect] = mask;
+			exposed = true;
+			VIRTIO_KMS_INFO("HYP_DEMURA scanout %d SSPP%d rect%d mask 0x%x\n",
+					disp_idx, pipe, rect, mask);
+		}
+	}
+
+	if (!exposed)
+		return;
+
+	set_bit(SDE_FEATURE_DEMURA, hyp_cfg->features);
+	hyp_cfg->demura_count += demura_dspp_count;
+	VIRTIO_KMS_INFO("HYP_DEMURA scanout %d DSPP count %u total %u\n",
+			disp_idx, demura_dspp_count, hyp_cfg->demura_count);
+}
+
 /* Helper function to process CTL blocks */
 static void _process_ctl_blocks(struct sde_mdss_cfg *hyp_cfg,
 		struct sde_mdss_cfg *sde_cfg,
@@ -2454,6 +2522,9 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 		_process_rc_blocks(hyp_cfg, sde_cfg, output);
 		VIRTIO_KMS_DBG("HYP_RC %d\n", hyp_cfg->rc_count);
+
+		_process_demura_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_DEMURA %d\n", hyp_cfg->demura_count);
 
 		_process_ds_blocks(hyp_cfg, sde_cfg, output, i);
 		VIRTIO_KMS_DBG("HYP_DS %d\n", hyp_cfg->ds_count);

@@ -2401,7 +2401,8 @@ void sde_cp_crtc_install_properties(struct drm_crtc *crtc)
 		goto lm_property;
 
 	/* Check for all the DSPP properties and attach it to CRTC */
-	features = catalog->dspp[0].features;
+	for (i = 0; i < catalog->dspp_count; i++)
+		features |= catalog->dspp[i].features;
 	for (i = 0; i < SDE_DSPP_MAX; i++) {
 		if (!test_bit(i, &features))
 			continue;
@@ -3493,12 +3494,29 @@ static void _dspp_demura_install_property(struct drm_crtc *crtc)
 	char demura_init_cfg[256];
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
-	u32 version;
+	u32 version = 0;
+	int i;
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
 
-	version = catalog->dspp[0].sblk->demura.version >> 16;
+	for (i = 0; i < catalog->dspp_count; i++) {
+		if (!test_bit(SDE_DSPP_DEMURA, &catalog->dspp[i].features))
+			continue;
+		if (!catalog->dspp[i].sblk) {
+			DRM_ERROR("invalid demura sblk for dspp %d\n",
+					catalog->dspp[i].id);
+			return;
+		}
+		version = catalog->dspp[i].sblk->demura.version >> 16;
+		break;
+	}
+
+	if (i == catalog->dspp_count) {
+		DRM_ERROR("no demura dspp found\n");
+		return;
+	}
+
 	snprintf(demura_init_cfg, ARRAY_SIZE(demura_init_cfg), "%s%d",
 		"SDE_DEMURA_INIT_CFG_V", version);
 	switch (version) {
@@ -5139,15 +5157,19 @@ static void _demura_caps_update(struct sde_crtc *crtc,
 		return;
 
 	for (i = 0; i < num_mixers; i++) {
-		if (crtc->mixers[i].hw_dspp) {
-			struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
+		struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
 
-			if (!dspp || (dspp->idx - DSPP_0) >= catalog->demura_count)
-				continue;
-			snprintf(blk_name, sizeof(blk_name), "demura%u",
-				(dspp->idx - DSPP_0));
-			sde_kms_info_add_keyint(info, blk_name, 1);
-		}
+		if (!dspp || !dspp->cap ||
+				!test_bit(SDE_DSPP_DEMURA, &dspp->cap->features))
+			return;
+	}
+
+	for (i = 0; i < num_mixers; i++) {
+		struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
+
+		snprintf(blk_name, sizeof(blk_name), "demura%u",
+			(dspp->idx - DSPP_0));
+		sde_kms_info_add_keyint(info, blk_name, 1);
 	}
 }
 
