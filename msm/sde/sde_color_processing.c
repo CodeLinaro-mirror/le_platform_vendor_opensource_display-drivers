@@ -7,6 +7,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/dma-buf.h>
+#include <linux/of.h>
 #include <linux/vmalloc.h>
 #include <linux/string.h>
 #include <drm/msm_drm_pp.h>
@@ -2109,6 +2110,15 @@ static void _sde_clear_ltm_merge_mode(struct sde_crtc *sde_crtc)
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
 }
 
+static bool _sde_cp_bypass_demura_sw_fuse(struct sde_kms *kms)
+{
+	if (!kms || !kms->dev || !kms->dev->dev)
+		return false;
+
+	return of_device_is_compatible(kms->dev->dev->of_node,
+			"qcom,sde-kms-virt");
+}
+
 void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = NULL;
@@ -2151,7 +2161,14 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	if (!kms) {
 		DRM_DEBUG_DRIVER("!kms = %d\n", !kms);
 	} else {
-		if (sde_in_trusted_vm(kms)) {
+		/*
+		 * Virtual KMS cannot access the physical Demura SW fuse register.
+		 * Demura property installation is already gated by the virtual
+		 * catalog, so bypass only this frontend fuse check; no fuse or
+		 * license state is modified.
+		 */
+		if (sde_in_trusted_vm(kms) ||
+				_sde_cp_bypass_demura_sw_fuse(kms)) {
 			demura_sw_fuse = SW_FUSE_ENABLE;
 		} else if (kms->hw_sw_fuse) {
 			demura_sw_fuse = sde_hw_get_demura_sw_fuse_value(kms->hw_sw_fuse);
