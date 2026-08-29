@@ -91,6 +91,7 @@
 #define WRAP_MAX_SIZE (BIT(4) - 1)
 #define MAX_DWORDS_SZ (BIT(14) - 1)
 #define REG_DMA_HEADERS_BUFFER_SZ (sizeof(u32) * 128)
+#define REG_DMA_EVTLOG_DATA_SIZE 13
 
 #define LUTBUS_TABLE_SEL_MASK 0x10000
 #define LUTBUS_BLOCK_SEL_MASK 0xffff
@@ -1564,6 +1565,64 @@ int reg_dump_dump_raw(char *str, u32 *p, int len, int width, int wrap, char *end
 	WORKLOAD_DBG("%s\n", str);
 
 	return c;
+}
+
+static void reg_dma_evtlog_begin(struct sde_reg_dma_kickoff_cfg *cfg,
+		u32 offset, u32 size)
+{
+	SDE_EVT32(cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			cfg->ctl->idx, cfg->dma_type, cfg->dma_buf->buffer_type,
+			size, SIZE_DWORD(cfg->dma_buf->index), SIZE_DWORD(offset),
+			cfg->last_command);
+}
+
+static inline u32 reg_dma_evtlog_data_word(const u32 *payload, u32 count,
+		u32 index)
+{
+	return index < count ? payload[index] : 0;
+}
+
+static void reg_dma_evtlog_data(const u32 *payload, u32 offset, u32 size)
+{
+	u32 count;
+
+	while (size) {
+		count = min_t(u32, size, REG_DMA_EVTLOG_DATA_SIZE);
+		SDE_EVT32(offset, count,
+				reg_dma_evtlog_data_word(payload, count, 0),
+				reg_dma_evtlog_data_word(payload, count, 1),
+				reg_dma_evtlog_data_word(payload, count, 2),
+				reg_dma_evtlog_data_word(payload, count, 3),
+				reg_dma_evtlog_data_word(payload, count, 4),
+				reg_dma_evtlog_data_word(payload, count, 5),
+				reg_dma_evtlog_data_word(payload, count, 6),
+				reg_dma_evtlog_data_word(payload, count, 7),
+				reg_dma_evtlog_data_word(payload, count, 8),
+				reg_dma_evtlog_data_word(payload, count, 9),
+				reg_dma_evtlog_data_word(payload, count, 10),
+				reg_dma_evtlog_data_word(payload, count, 11),
+				reg_dma_evtlog_data_word(payload, count, 12));
+		payload += count;
+		offset += count;
+		size -= count;
+	}
+}
+
+static void reg_dma_evtlog_end(struct sde_reg_dma_kickoff_cfg *cfg,
+		u32 offset, u32 size)
+{
+	SDE_EVT32(cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			cfg->ctl->idx, cfg->dma_type, size, SIZE_DWORD(offset));
+}
+
+static void reg_dma_evtlog_payload(struct sde_reg_dma_kickoff_cfg *cfg,
+		u32 offset, u32 size)
+{
+	u32 *payload = cfg->dma_buf->vaddr + offset;
+
+	reg_dma_evtlog_begin(cfg, offset, size);
+	reg_dma_evtlog_data(payload, SIZE_DWORD(offset), size);
+	reg_dma_evtlog_end(cfg, offset, size);
 }
 
 void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 sz)
@@ -3192,9 +3251,14 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		if (val) {
 			DRM_ERROR("LUTDMA VQ busy status %x\n", val);
 			SDE_EVT32(val);
+			SDE_EVT32(dpu_idx, ctl_id, vq_idx, q_id, cfg->dma_type,
+					val, SDE_EVTLOG_ERROR);
 			//TODO: reset VQ
 		}
 
+		reg_dma_evtlog_payload(cfg, pos, size);
+		SDE_EVT32(dpu_idx, ctl_id, vq_idx, q_id, cfg->dma_type,
+				SIZE_DWORD(pos), size, cmd0, cmd1, last);
 		if (0 && (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask))
 			reg_dma_dump_payload(cfg, pos, size * sizeof(u32));
 		if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask) {
@@ -3242,6 +3306,9 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		SDE_REG_WRITE_CPU(&hw,
 				reg_dma_intr_5_clear_offset[dpu_idx][ctl_id][q_id],
 				0xF0007);
+		SDE_EVT32(dpu_idx, ctl_id, vq_idx, q_id, cfg->dma_type,
+				ctl_trigger_done_mask[dpu_idx][ctl_id]
+				[cfg->ctl->display_idx][q_id]);
 
 #ifdef ENABLE_LUTDMA_INTERRUPTS
 		SDE_REG_WRITE_CPU(&hw,
@@ -3427,6 +3494,9 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			rc = kick_off_v4(&kick_off, dpu_idx);
 			if (rc) {
 				DRM_ERROR("kick off %s failed\n", vq_kickoff[i].name);
+				SDE_EVT32(dpu_idx, ctl->idx, vq_idx, i,
+						vq_kickoff[i].buf_type, rc,
+						SDE_EVTLOG_ERROR);
 				return rc;
 			}
 		}
@@ -3472,8 +3542,9 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	SET_UP_REG_DMA_VQ_REG(hw, reg_dma[ctl->dpu_idx], kick_off.dma_type,
 			vq_idx);
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, mode, ctl->idx, kick_off.queue_select,
-			kick_off.dma_type, kick_off.op, ctl->dpu_idx);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, mode, ctl->idx, vq_idx,
+			kick_off.queue_select, kick_off.dma_type, kick_off.op,
+			ctl->dpu_idx);
 	if (mode == REG_DMA_WAIT4_COMP && hw.base_off) {
 		rc = read_poll_timeout(sde_reg_read, val,
 				(val & (TRIGGER_0_DONE | ACCESS_FAIL)), 10, 20000, false,
@@ -3482,7 +3553,9 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			DRM_ERROR("poll wait failed %d val %x mask 0x%lx\n",
 			    rc, val, TRIGGER_0_DONE | ACCESS_FAIL);
 		}
-		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, mode, ctl->dpu_idx, rc);
+		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, mode, ctl->idx, vq_idx,
+			kick_off.queue_select, ctl->dpu_idx, rc, val,
+			!!(val & TRIGGER_0_DONE), !!(val & ACCESS_FAIL));
 
 		if (rc || val & ACCESS_FAIL) {
 			DRM_ERROR("regdma fail dpu %d ctl %d vq %d\n",
