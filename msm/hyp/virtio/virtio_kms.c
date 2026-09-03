@@ -3003,6 +3003,19 @@ int virtio_kms_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
 	return virtio_gpu_cmd_set_power(kms, dpu_id, power_level);
 }
 
+static bool virtio_kms_has_displays(struct msm_hyp_kms *hyp_kms, int dpu_id)
+{
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	int i;
+
+	for (i = 0; i < kms->num_scanouts; i++) {
+		if (kms->outputs[i].hw_assign.dpu_id == dpu_id)
+			return true;
+	}
+
+	return false;
+}
+
 static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.get_displays = virtio_kms_get_displays,
 	.get_connector_infos = virtio_kms_get_connector_infos,
@@ -3013,6 +3026,7 @@ static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.update_hw_reservation = virtio_kms_update_hw_reservation,
 	.register_event = virtio_kms_register_event,
 	.set_power_level = virtio_kms_set_power_level,
+	.has_displays = virtio_kms_has_displays,
 };
 
 /*
@@ -3343,6 +3357,23 @@ exit:
 }
 
 #ifdef HAB_VIRQ_FEATURE_ENABLE
+/**
+ * is_dbl_handle_valid() - Checks is a doorbell handle is valid.
+ * @hab_dbl_handle: doorbell handle
+ *
+ * Return: true/false
+ *
+ */
+bool is_dbl_handle_valid(int32_t hab_dbl_handle)
+{
+	if (hab_dbl_handle > HAB_DBL_HANDLE_NONE &&
+		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
+	{
+		return true;
+	} else {
+		return false;
+	}
+}
 
 /**
  * hab_virq_cb() - Callback function triggered when a virq is received.
@@ -3364,7 +3395,7 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 
 	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
 
-	if (virq_info->hab_dbl_handle != 0)
+	if (is_dbl_handle_valid(virq_info->hab_dbl_handle))
 	{
 		/*
 		 * dpu_id is stored directly in virq_info at registration time,

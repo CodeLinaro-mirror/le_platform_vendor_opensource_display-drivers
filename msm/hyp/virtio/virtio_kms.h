@@ -27,6 +27,15 @@ enum virtio_channel_ids {
 	MAX_CHANNELS
 };
 
+enum hab_dbl_handle_t {
+	HAB_DBL_HANDLE_NONE,
+	HAB_DBL_HANDLE_2 = 2,
+	HAB_DBL_HANDLE_3 = 3,
+	HAB_DBL_HANDLE_5 = 5, // reserved for Linux GVM
+	HAB_DBL_HANDLE_6 = 6, // reserved for Linux GVM
+	HAB_DBL_HANDLE_MAX
+};
+
 enum virtio_hpd_connection_status {
 	VIRTIO_HPD_DISCONNECT = 1,
 	VIRTIO_HPD_CONNECT
@@ -112,7 +121,7 @@ struct channel_map {
 };
 
 struct virq_info_t {
-	uint32_t hab_dbl_handle;
+	enum hab_dbl_handle_t hab_dbl_handle;
 	struct virtio_kms *kms;
 	uint32_t dpu_id;
 };
