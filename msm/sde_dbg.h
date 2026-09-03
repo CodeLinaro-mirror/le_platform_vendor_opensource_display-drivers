@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -88,7 +88,7 @@ enum sde_dbg_dump_context {
  * "adb shell echo 2 > /sys/kernel/debug/dri/0/debug/reg_dump" before
  * doing the test cases.
  */
-#define SDE_DBG_DEFAULT_DUMP_MODE	SDE_DBG_DUMP_IN_MEM
+#define SDE_DBG_DEFAULT_DUMP_MODE	SDE_DBG_DUMP_IN_LOG
 
 /*
  * Define blocks for register write logging.
