@@ -296,7 +296,7 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 	struct drm_plane *plane;
 	int num = 0, i;
 	u32 sspp_id[MAX_PLANES];
-	u32 master_plane_id[MAX_PLANES];
+	u32 master_plane_id[MAX_PLANES] = {0};
 	u32 num_virt_planes = 0;
 	int ret;
 

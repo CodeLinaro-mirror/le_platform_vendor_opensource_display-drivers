@@ -718,8 +718,15 @@ static int _sde_rm_hw_blk_create(
 	struct sde_rm_hw_blk *blk;
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_hw_blk_reg_map *hw;
-	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(rm->dev));
+	struct msm_kms *msm_kms = ddev_to_msm_kms(rm->dev);
+	struct sde_kms *sde_kms;
 	struct sde_vbif_clk_client clk_client = {0};
+
+	if (!msm_kms) {
+		SDE_ERROR("invalid msm_kms\n");
+		return -EINVAL;
+	}
+	sde_kms = to_sde_kms(msm_kms);
 
 	hw_mdp = rm->hw_mdp;
 
@@ -2394,7 +2401,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm, pipe_count;
+	size_t pipes_per_lm = 0, pipe_count = 0;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -3166,7 +3173,7 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
 				  struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				  struct sde_hw_blk_reg_map *pp_shd_hw)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3223,7 +3230,7 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm,
 				     struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				     struct sde_hw_mixer *sde_hw_lm)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3280,7 +3287,7 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm,
 				      struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				      struct sde_hw_ctl *sde_hw_ctl)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 

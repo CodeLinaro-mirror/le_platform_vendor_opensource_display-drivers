@@ -1807,10 +1807,10 @@ void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
 inline u32 reg_dma_readback(u32 addr, bool abs_addr, struct sde_hw_ctl *ctl,
 		struct sde_hw_vatran *vatran)
 {
-	struct sde_hw_blk_reg_map hw;
+	struct sde_hw_blk_reg_map hw = {0};
 
 	/* TODO: readback for relative address */
-	if (!abs_addr)
+	if (!abs_addr || !vatran)
 		return 0;
 
 	if (addr >= vatran->caps->base_off + vatran->caps->len) {
@@ -2537,7 +2537,7 @@ static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 int reset_v1(struct sde_hw_ctl *ctl)
 {
 	struct sde_hw_blk_reg_map hw;
-	u32 val, i = 0, k = 0, dpu_idx = ctl->dpu_idx;
+	u32 val, i = 0, k = 0, dpu_idx;
 
 	if (!ctl || ctl->idx >= CTL_MAX) {
 		DRM_ERROR("invalid ctl %pK ctl idx %d\n",
@@ -2545,6 +2545,7 @@ int reset_v1(struct sde_hw_ctl *ctl)
 		return -EINVAL;
 	}
 
+	dpu_idx = ctl->dpu_idx;
 	if (dpu_idx >= DPU_MAX) {
 		DRM_ERROR("invalid dpu idx %d\n", dpu_idx);
 		return -EINVAL;
@@ -3353,12 +3354,12 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 #else
 	int last_db_idx, last_sb_idx;
 #endif
-	struct sde_reg_dma_kickoff_cfg kick_off;
-	struct sde_hw_blk_reg_map hw;
+	struct sde_reg_dma_kickoff_cfg kick_off = {0};
+	struct sde_hw_blk_reg_map hw = {0};
 	struct sde_reg_dma_buffer *buf;
 	int dpu_idx, vq_idx;
 	u32 val;
-	int i, rc;
+	int i, rc = 0;
 
 	if (!ctl || ctl->idx >= CTL_MAX || q >= DMA_CTL_QUEUE_MAX) {
 		DRM_ERROR("ctl %pK q %d index %d\n", ctl, q,
@@ -3662,7 +3663,7 @@ void dump_hyp_config(struct sde_hw_ctl *ctl)
 
 bool check_engine_status_v4(struct sde_hw_ctl *ctl)
 {
-	struct sde_hw_blk_reg_map hw;
+	struct sde_hw_blk_reg_map hw = {0};
 	int dpu_idx, vq_idx;
 
 	if (!ctl || ctl->idx >= CTL_MAX) {
@@ -3683,6 +3684,7 @@ bool check_engine_status_v4(struct sde_hw_ctl *ctl)
 		return false;
 	}
 
+	memset(&hw, 0, sizeof(hw));
 	SET_UP_REG_DMA_VQ_REG(hw, reg_dma[ctl->dpu_idx], REG_DMA_TYPE_DB, vq_idx);
 	SDE_DEBUG("VQ%d DB CMD0 = %X\n", vq_idx,
 			SDE_REG_READ(&hw, reg_dma_ctl_queue_off[dpu_idx][ctl->idx]));

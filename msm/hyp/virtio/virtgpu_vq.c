@@ -1413,6 +1413,10 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_GET_SCANOUT_PLANES<%d>\n",
 			le32_to_cpu(resp->scanout_id));
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
@@ -1711,14 +1715,11 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	struct virtio_gpu_set_resource_info *cmd_p =
 		kzalloc(sizeof(struct virtio_gpu_set_resource_info),
 				GFP_KERNEL);
-	struct virtio_gpu_ctrl_hdr *resp =
-		kzalloc(sizeof(struct virtio_gpu_ctrl_hdr),
-		       GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0,i;
 
-	if (!cmd_p || !resp) {
+	if (!cmd_p) {
 		VIRTGPU_VQ_ERR("Memory allocation failed\n");
 		goto error;
 	}
@@ -1754,8 +1755,7 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+
 	return rc;
 }
 
@@ -1767,13 +1767,14 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	struct virtio_gpu_set_plane *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_set_plane),
 					GFP_KERNEL);
-	struct virtio_gpu_resp_set_plane *resp =
-		kzalloc(sizeof(struct virtio_gpu_resp_set_plane),
-				GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
 			scanout, plane_id, res_id);
 
@@ -1798,8 +1799,6 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
 
 	return rc;
 }
@@ -1819,6 +1818,10 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_PLANE_CREATE);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	cmd_p->plane_id = cpu_to_le32(plane_id);
@@ -1869,6 +1872,10 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_PLANE_DESTROY <%d : %d>\n",
 			scanout, plane_id);
 
@@ -1913,13 +1920,14 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	struct virtio_gpu_set_plane_properties *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_set_plane_properties),
 					GFP_KERNEL);
-	struct virtio_gpu_resp_plane_properties *resp =
-		kzalloc(sizeof(struct virtio_gpu_resp_plane_properties),
-			GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
 			"<%d:%d> (0x%llx)\n",
 			scanout, plane_id, prop.mask);
@@ -1961,8 +1969,6 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
 
 	return rc;
 }
@@ -2166,7 +2172,7 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 {
 #define MAX_LINE_LENGTH 128
 	struct virtio_kms_output *output = &kms->outputs[scanout];
-	char line[MAX_LINE_LENGTH], value[MAX_LINE_LENGTH];
+	char line[MAX_LINE_LENGTH] = {0}, value[MAX_LINE_LENGTH] = {0};
 	const char *blob = resp->blob;
 	const char *ptr = blob;
 	struct display_hw_assigment *assign = &output->hw_assign;

@@ -798,7 +798,7 @@ static void virtio_kms_plane_zpos_adj_fe(struct drm_crtc *crtc,
 	struct virtio_crtc_info_priv *crtc_priv = container_of(c->info,
 			struct virtio_crtc_info_priv,
 			base);
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 
 	drm_for_each_plane_mask(plane, ddev, crtc->state->plane_mask) {
 		new_pstate = to_msm_hyp_plane_state(plane->state);
@@ -1097,7 +1097,11 @@ static bool virtio_kms_plane_is_color_changed(
 
 	p = to_msm_hyp_plane(plane);
 	plane_priv = container_of(p->info, struct virtio_plane_info_priv, base);
-	kms = plane_priv ? plane_priv->kms : NULL;
+	if (!plane_priv) {
+		pr_err("Plane prev info is NULL\n");
+		return false;
+	}
+	kms = plane_priv->kms;
 
 	_virtio_kms_get_color_buff_idx(kms,
 		plane_priv->plane_id,
@@ -2009,7 +2013,7 @@ static int virtio_kms_create_colorbuffer(struct device *device,
 	int32_t client_id = 0;
 	uint32_t export_id = 0;
 	dma_addr_t dma_handle;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info  mem;
 
 	prop.color_buf[0]  = 0;
@@ -2214,7 +2218,7 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms, struct device *dev)
 	int rc = 0;
 	uint32_t num_planes = 0;
 	struct virtio_kms_output *output;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info mem = { 0 };
 	int buf_len = VIRTIO_COLOR_BUF_SIZE;
 	dma_addr_t *dma_handle = NULL;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -583,6 +583,11 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status)
 		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
 
+	if (!phys_enc->hw_intf) {
+		SDE_ERROR("invalid hw_intf\n");
+		return;
+	}
+
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
 	avr_cutoff = intf_status.is_prog_fetch_en ? 1 : 3;
 
@@ -627,13 +632,15 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	unsigned long lock_flags;
 	struct sde_hw_intf_cfg intf_cfg = { 0 };
 	bool is_split_link = false;
-	bool avr_enabled = sde_connector_get_qsync_mode(phys_enc->connector);
+	bool avr_enabled;
 
 	if (!phys_enc || !phys_enc->sde_kms || !phys_enc->hw_ctl ||
 			!phys_enc->hw_intf || !phys_enc->connector) {
 		SDE_ERROR("invalid encoder %d\n", !phys_enc);
 		return;
 	}
+
+	avr_enabled = sde_connector_get_qsync_mode(phys_enc->connector);
 
 	mode = phys_enc->cached_mode;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
@@ -905,6 +912,8 @@ static void sde_encoder_restore_state(struct sde_encoder_phys *phys_enc)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_enc = &sde_enc->base;
 	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms)
+		return;
 	ddev = sde_kms->dev;
 
 	if (!ddev || !ddev_to_msm_kms(ddev))
@@ -963,6 +972,8 @@ static void sde_encoder_store_state(struct sde_encoder_phys *phys_enc)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_enc = &sde_enc->base;
 	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms)
+		return;
 	dev = sde_kms->dev;
 
 	drm_modeset_acquire_init(&ctx, 0);
@@ -1144,7 +1155,7 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
 	u32 reset_status = 0;
@@ -1155,6 +1166,8 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 
 	if (!phys_enc)
 		return;
+
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
@@ -1232,11 +1245,13 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys *phys_enc = arg;
 	struct sde_encoder_phys_vid *vid_enc;
 	struct drm_connector *drm_conn;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_virt *sde_enc;
 	u32 qsync_mode;
 
 	if (!phys_enc)
 		return;
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	drm_conn = sde_enc->cur_master->connector;
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
@@ -2419,11 +2434,11 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 {
 	unsigned long lock_flags;
 	struct sde_encoder_phys_vid *vid_enc;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_display_info *info = &sde_enc->disp_info;
-	struct drm_connector *drm_conn = phys_enc->connector;
-	struct sde_connector *sde_conn = to_sde_connector(drm_conn);
-	struct drm_connector_state *drm_conn_state = drm_conn->state;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
+	struct drm_connector *drm_conn;
+	struct sde_connector *sde_conn;
+	struct drm_connector_state *drm_conn_state;
 	u32 avr_mode;
 	u32 ret;
 
@@ -2431,6 +2446,12 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
+	drm_conn = phys_enc->connector;
+	sde_conn = to_sde_connector(drm_conn);
+	drm_conn_state = drm_conn->state;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	SDE_DEBUG_VIDENC(vid_enc, "enable_state %d\n", phys_enc->enable_state);

@@ -1809,17 +1809,19 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops;
+
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command)
+	if (ops->last_command)
 		return ops->last_command(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 
@@ -1829,23 +1831,25 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 
 static int sde_hw_reg_dma_flush_vq(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops;
 	int ret;
+
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command) {
+	if (ops->last_command) {
 		ret = ops->last_command(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 		if (ret)
 			return ret;
-	} else if (ops && ops->last_command_sb) {
+	} else if (ops->last_command_sb) {
 		ret = ops->last_command_sb(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 		if (ret)

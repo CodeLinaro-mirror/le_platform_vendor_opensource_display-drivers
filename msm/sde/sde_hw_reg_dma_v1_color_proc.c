@@ -374,6 +374,12 @@ static inline int _reg_dmav1_rc_write(struct sde_hw_dspp *ctx,
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	uint32_t abs_offset;
 
+	if (!ctx || ctx->idx >= DSPP_MAX || feature >= REG_DMA_FEATURES_MAX) {
+		SDE_ERROR("invalid ctx %pK idx %d feature %d\n",
+			ctx, ctx ? ctx->idx : -1, feature);
+		return -EINVAL;
+	}
+
 	abs_offset = ctx->hw.blk_off + ctx->cap->sblk->rc.base + reg_offset;
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, feature,
 		dspp_buf[feature][ctx->idx][ctx->dpu_idx]);
@@ -1129,6 +1135,11 @@ static void dspp_3d_gamutv4_off(struct sde_hw_dspp *ctx, void *cfg)
 	int rc;
 	u32 num_of_mixers, blk = 0;
 
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 		&num_of_mixers);
 	if (rc == -EINVAL) {
@@ -1356,6 +1367,11 @@ static int reg_dmav1_setup_dspp_gc_common(struct sde_hw_dspp *ctx, void *cfg,
 	u32 *addr[GC_TBL_NUM];
 	u32 num_of_mixers, blk = 0;
 
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return -EINVAL;
+	}
+
 	if (hw_cfg->len != sizeof(struct drm_msm_pgc_lut)) {
 		DRM_ERROR("invalid size of payload len %d exp %zd\n",
 				hw_cfg->len, sizeof(struct drm_msm_pgc_lut));
@@ -1563,6 +1579,11 @@ static void _dspp_igcv31_off(struct sde_hw_dspp *ctx, void *cfg)
 	int rc;
 	u32 reg;
 	u32 num_of_mixers, blk = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 		&num_of_mixers);
@@ -2046,6 +2067,11 @@ static void _dspp_pcc_common_off(struct sde_hw_dspp *ctx, void *cfg)
 	int rc;
 	u32 reg;
 	u32 num_of_mixers, blk = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 		&num_of_mixers);
@@ -2843,6 +2869,11 @@ static void __setup_dspp_memcol(struct sde_hw_dspp *ctx,
 	u32 opcode = 0, opcode_mask = 0xFFFFFFFF;
 	u32 num_of_mixers, blk = 0;
 
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
 	switch (type) {
 	case MEMC_SKIN:
 		idx = 0;
@@ -3318,6 +3349,11 @@ static void vig_gamutv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	u32 gamut_base = ctx->cap->sblk->gamut_blk.regdma_base;
 	enum sde_sspp_multirect_index idx = SDE_SSPP_RECT_0;
 
+	if (!ctx || ctx->idx >= SSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
 		return;
@@ -3482,6 +3518,11 @@ static void vig_igcv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	u32 igc_base = ctx->cap->sblk->igc_blk[0].regdma_base;
 	enum sde_sspp_multirect_index idx = SDE_SSPP_RECT_0;
+
+	if (!ctx || ctx->idx >= SSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
@@ -3730,6 +3771,11 @@ static void dma_igcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	u32 igc_opmode_off;
 
+	if (!ctx || ctx->idx >= SSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
 		return;
@@ -3888,6 +3934,11 @@ static void dma_gcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	u32 gc_opmode_off;
+
+	if (!ctx || ctx->idx >= SSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
@@ -5619,6 +5670,12 @@ static void _perform_sbdma_kickoff(struct sde_hw_dspp *ctx,
 	int rc, i;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 
+	if (!ctx || ctx->idx >= DSPP_MAX || feature >= REG_DMA_FEATURES_MAX) {
+		DRM_ERROR("invalid ctx %pK idx %d feature %d\n",
+			ctx, ctx ? ctx->idx : -1, feature);
+		return;
+	}
+
 	if ((feature != GAMUT && feature != IGC && feature != SIX_ZONE) ||
 			!(blk & (DSPP0 | DSPP1 | DSPP2 | DSPP3))) {
 		DRM_ERROR("SB DMA invalid for feature / block - %d/%d\n",
@@ -5658,6 +5715,11 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc = 0;
 	u32 reg = 0, num_of_mixers = 0, blk = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5704,6 +5766,11 @@ static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc = 0;
 	u32 reg, num_of_mixers = 0, blk = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5906,6 +5973,11 @@ static void dspp_3d_gamutv43_off(struct sde_hw_dspp *ctx, void *cfg)
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc;
 	u32 op_mode = 0, num_of_mixers, blk = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -6421,9 +6493,16 @@ void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	struct sde_hw_reg_dma_ops *dma_ops;
-	uint32_t reg_off = ctx->hw.blk_off + ctx->cap->sblk->spr.base + 0x4;
+	uint32_t reg_off;
 	uint32_t reg = 0;
 	int rc = 0;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
+	reg_off = ctx->hw.blk_off + ctx->cap->sblk->spr.base + 0x4;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
@@ -7020,9 +7099,16 @@ static void reg_dma_demura_off(struct sde_hw_dspp *ctx,
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
-	u32 demura_base = ctx->cap->sblk->demura.base;
+	u32 demura_base;
 	u32 op_mode = 0;
 	int rc;
+
+	if (!ctx || ctx->idx >= DSPP_MAX) {
+		DRM_ERROR("invalid ctx %pK\n", ctx);
+		return;
+	}
+
+	demura_base = ctx->cap->sblk->demura.base;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
