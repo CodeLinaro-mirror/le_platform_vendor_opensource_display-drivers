@@ -241,6 +241,7 @@ enum sde_prop {
 	SOCCP_PH,
 	HW_FENCE_MDP_OFFSET,
 	IPCC_PROTOCOL_OFFSET,
+	IPCC_CLIENT_OUT_PHYS_ID,
 	SDE_PROP_MAX,
 };
 
@@ -701,7 +702,8 @@ static struct sde_prop_type sde_prop[] = {
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
 	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32},
 	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32},
-	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32}
+	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32},
+	{IPCC_CLIENT_OUT_PHYS_ID, "qcom,sde-ipcc-client-out-phys-id", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
