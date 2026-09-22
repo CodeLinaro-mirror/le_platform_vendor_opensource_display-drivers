@@ -1909,7 +1909,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	}
 	mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
-	unexport_flags |= HABMM_EXPIMP_FLAGS_FD;
+	unexport_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
 	rc = habmm_unexport(
 			handle,
 			mem->shmem_id,
@@ -2395,8 +2395,10 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms, struct device *dev)
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		rc = virtio_kms_scanout_init(kms, scanout, dev);
-		if (rc)
+		if (rc) {
 			pr_err("scanout init failed %d\n", scanout);
+			goto error;
+		}
 	}
 error:
 	return rc;
@@ -2642,6 +2644,12 @@ exit:
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)
 {
 	struct drm_crtc *crtc = kms->outputs[scanout].crtc;
+
+	if (!crtc) {
+		pr_err("virtio: crtc is NULL for scanout %d\n", scanout);
+		return;
+	}
+
 	msm_hyp_crtc_vblank_done(crtc);
 
 	if (kms->outputs[scanout].vblank_enabled) {

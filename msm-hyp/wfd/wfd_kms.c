@@ -133,7 +133,7 @@
 
 #define MASTER_PIPE_IDX        0
 #define CLIENT_ID_LEN_IN_CHARS 5
-#define MAX_MDP_CLK_KHZ        412500
+#define MAX_MDP_CLK_KHZ        650000
 #define MAX_HORZ_DECIMATION    4
 #define MAX_VERT_DECIMATION    4
 #define SSPP_UNITY_SCALE       1
@@ -1968,7 +1968,7 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		pipe_cnt += wfd_kms->pipeline_cnt[i];
 
 		/* these values should read from host */
-		priv->base.max_mdp_clk = 412500000LL;
+		priv->base.max_mdp_clk = (uint64_t)MAX_MDP_CLK_KHZ * 1000;
 		priv->base.qseed_type = "qseed3";
 		priv->base.smart_dma_rev = "smart_dma_v2p5";
 		priv->base.has_hdr = true;
