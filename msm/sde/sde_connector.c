@@ -146,14 +146,56 @@ static void sde_dimming_bl_notify(struct sde_connector *conn, struct dsi_backlig
 }
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+static void sde_hyp_dimming_bl_notify(struct sde_connector *conn,
+					struct backlight_device *bd)
+{
+	struct drm_event event = {};
+	struct drm_msm_backlight_info bl_info = {};
+
+	if (!conn || !bd || !conn->dimming_bl_notify_enabled)
+		return;
+
+	bl_info.brightness_max = bd->props.max_brightness;
+	bl_info.brightness = bd->props.brightness;
+	bl_info.bl_level_max = bd->props.max_brightness;
+	bl_info.bl_level = bd->props.brightness;
+	/* DP has no DSI dimming scale; use valid neutral defaults. */
+	bl_info.bl_scale = 0;
+	bl_info.bl_scale_sv = 0;
+	bl_info.bl_scale_max = 1;
+	bl_info.bl_scale_sv_max = 1;
+	bl_info.status = 0;
+	bl_info.min_bl = 0;
+
+	event.type = DRM_EVENT_DIMMING_BL;
+	event.length = sizeof(bl_info);
+	SDE_DEBUG("hyp dimming BL event brightness %u/%u\n",
+			bl_info.brightness, bl_info.brightness_max);
+	msm_mode_object_event_notify(&conn->base.base, conn->base.dev,
+			&event, (u8 *)&bl_info);
+}
+
 static int sde_hyp_backlight_device_update_status(struct backlight_device *bd)
 {
+	struct sde_connector *conn;
+
+	if (!bd)
+		return -EINVAL;
+
+	conn = bl_get_data(bd);
+	if (!conn)
+		return -EINVAL;
+
+	sde_hyp_dimming_bl_notify(conn, bd);
 	return 0;
 }
 
 static int sde_hyp_backlight_device_get_brightness(struct backlight_device *bd)
 {
-	return 0;
+	if (!bd)
+		return -EINVAL;
+
+	return bd->props.brightness;
 }
 
 static const struct backlight_ops sde_hyp_backlight_device_ops = {
