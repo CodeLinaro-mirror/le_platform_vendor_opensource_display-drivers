@@ -510,11 +510,15 @@ static inline int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
  * @base:	Baseclass physical encoder structure
  * @timing_params: Current timing parameter
  * @error_count: Number of consecutive kickoffs that experienced an error
+ * @ctl_flush_vsync_count: Consecutive VSyncs with an uncleared CTL flush
+ * @dspp_flush_vsync_count: Consecutive VSyncs with an uncleared DSPP flush
  */
 struct sde_encoder_phys_vid {
 	struct sde_encoder_phys base;
 	struct intf_timing_params timing_params;
 	int error_count;
+	u32 ctl_flush_vsync_count;
+	u32 dspp_flush_vsync_count;
 };
 
 /**
