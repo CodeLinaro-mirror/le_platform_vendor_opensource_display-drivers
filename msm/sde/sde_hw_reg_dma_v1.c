@@ -1567,13 +1567,13 @@ int reg_dump_dump_raw(char *str, u32 *p, int len, int width, int wrap, char *end
 	return c;
 }
 
-static void reg_dma_evtlog_begin(struct sde_reg_dma_kickoff_cfg *cfg,
-		u32 offset, u32 size)
+static void reg_dma_evtlog_begin(struct sde_reg_dma_buffer *dma_buf,
+		u32 ctl_idx, enum sde_reg_dma_type dma_type, u32 offset, u32 size,
+		u32 last_command)
 {
-	SDE_EVT32(cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
-			cfg->ctl->idx, cfg->dma_type, cfg->dma_buf->buffer_type,
-			size, SIZE_DWORD(cfg->dma_buf->index), SIZE_DWORD(offset),
-			cfg->last_command);
+	SDE_EVT32(dma_buf->dpu_idx, dma_buf->vq_idx, ctl_idx, dma_type,
+			dma_buf->buffer_type, size, SIZE_DWORD(dma_buf->index),
+			SIZE_DWORD(offset), last_command);
 }
 
 static inline u32 reg_dma_evtlog_data_word(const u32 *payload, u32 count,
@@ -1608,11 +1608,11 @@ static void reg_dma_evtlog_data(const u32 *payload, u32 offset, u32 size)
 	}
 }
 
-static void reg_dma_evtlog_end(struct sde_reg_dma_kickoff_cfg *cfg,
-		u32 offset, u32 size)
+static void reg_dma_evtlog_end(struct sde_reg_dma_buffer *dma_buf,
+		u32 ctl_idx, enum sde_reg_dma_type dma_type, u32 offset, u32 size)
 {
-	SDE_EVT32(cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
-			cfg->ctl->idx, cfg->dma_type, size, SIZE_DWORD(offset));
+	SDE_EVT32(dma_buf->dpu_idx, dma_buf->vq_idx, ctl_idx, dma_type,
+			size, SIZE_DWORD(offset));
 }
 
 static void reg_dma_evtlog_payload(struct sde_reg_dma_kickoff_cfg *cfg,
@@ -1620,9 +1620,11 @@ static void reg_dma_evtlog_payload(struct sde_reg_dma_kickoff_cfg *cfg,
 {
 	u32 *payload = cfg->dma_buf->vaddr + offset;
 
-	reg_dma_evtlog_begin(cfg, offset, size);
+	reg_dma_evtlog_begin(cfg->dma_buf, cfg->ctl->idx, cfg->dma_type,
+			offset, size, cfg->last_command);
 	reg_dma_evtlog_data(payload, SIZE_DWORD(offset), size);
-	reg_dma_evtlog_end(cfg, offset, size);
+	reg_dma_evtlog_end(cfg->dma_buf, cfg->ctl->idx, cfg->dma_type,
+			offset, size);
 }
 
 void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg, u32 offset, u32 sz)
@@ -3253,6 +3255,7 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 			SDE_EVT32(val);
 			SDE_EVT32(dpu_idx, ctl_id, vq_idx, q_id, cfg->dma_type,
 					val, SDE_EVTLOG_ERROR);
+			SDE_DBG_DUMP_WQ(0);
 			//TODO: reset VQ
 		}
 

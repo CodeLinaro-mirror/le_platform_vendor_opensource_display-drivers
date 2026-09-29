@@ -590,6 +590,29 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 #endif
 }
 
+static u32 sde_hw_ctl_get_dspp_flush_register(struct sde_hw_ctl *ctx)
+{
+	u32 flush = 0;
+	u32 offset;
+	int i;
+
+	if (!ctx || !(ctx->caps->features & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)))
+		return 0;
+
+	for (i = 0; i < CTL_MAX_DSPP_COUNT; i++) {
+		if (i < CTL_DSPP_5_START_IDX)
+			offset = CTL_DSPP_0_FLUSH + (i * CTL_DSPP_FLUSH_STRIDE);
+		else
+			offset = CTL_DSPP_5_FLUSH +
+				((i - CTL_DSPP_5_START_IDX) *
+				CTL_DSPP_5_FLUSH_STRIDE);
+
+		flush |= SDE_REG_READ(&ctx->hw, offset);
+	}
+
+	return flush;
+}
+
 static inline u32 sde_hw_ctl_get_flush_complete_register(struct sde_hw_ctl *ctx)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -1992,6 +2015,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
 		ops->update_bitmask_dspp_subblk =
 				sde_hw_ctl_update_bitmask_dspp_subblk;
+		ops->get_dspp_flush_register = sde_hw_ctl_get_dspp_flush_register;
 	} else {
 		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
 		ops->update_bitmask_dspp_pavlut =
@@ -2092,6 +2116,7 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
 		ops->update_bitmask_dspp_subblk =
 				sde_hw_ctl_update_bitmask_dspp_subblk;
+		ops->get_dspp_flush_register = sde_hw_ctl_get_dspp_flush_register;
 	} else {
 		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
 		ops->update_bitmask_dspp_pavlut =

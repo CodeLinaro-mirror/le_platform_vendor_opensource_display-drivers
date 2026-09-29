@@ -32,6 +32,18 @@
 /* Poll time to do recovery during active region */
 #define POLL_TIME_USEC_FOR_LN_CNT 500
 #define MAX_POLL_CNT 10
+#define SDE_FLUSH_STUCK_VSYNC_COUNT 3
+
+static bool sde_encoder_phys_vid_flush_stuck(u32 flush, u32 *vsync_count)
+{
+	if (!flush) {
+		*vsync_count = 0;
+		return false;
+	}
+
+	(*vsync_count)++;
+	return *vsync_count == SDE_FLUSH_STUCK_VSYNC_COUNT;
+}
 
 static bool sde_encoder_phys_vid_is_master(
 		struct sde_encoder_phys *phys_enc)
@@ -1152,22 +1164,27 @@ static enum hrtimer_restart sde_encoder_phys_vid_freq_step_callback(struct hrtim
 static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 {
 	struct sde_encoder_phys *phys_enc = arg;
+	struct sde_encoder_phys_vid *vid_enc;
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
 	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
+	u32 dspp_flush_register = 0;
 	u32 reset_status = 0;
 	int new_cnt = -1, old_cnt = -1;
 	u32 event = 0;
 	int pend_ret_fence_cnt = 0;
 	u32 fence_ready = -1;
+	bool ctl_flush_stuck = false;
+	bool dspp_flush_stuck = false;
 
 	if (!phys_enc)
 		return;
 
 	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
@@ -1184,8 +1201,18 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 
 	old_cnt = atomic_read(&phys_enc->pending_kickoff_cnt);
 
-	if (hw_ctl->ops.get_flush_register)
+	if (hw_ctl->ops.get_flush_register) {
 		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+		ctl_flush_stuck = sde_encoder_phys_vid_flush_stuck(flush_register,
+				&vid_enc->ctl_flush_vsync_count);
+	} else {
+		vid_enc->ctl_flush_vsync_count = 0;
+	}
+	if (hw_ctl->ops.get_dspp_flush_register)
+		dspp_flush_register = hw_ctl->ops.get_dspp_flush_register(hw_ctl);
+
+	dspp_flush_stuck = sde_encoder_phys_vid_flush_stuck(dspp_flush_register,
+			&vid_enc->dspp_flush_vsync_count);
 
 	if (flush_register)
 		goto not_flushed;
@@ -1206,6 +1233,9 @@ not_flushed:
 		reset_status = hw_ctl->ops.get_reset(hw_ctl);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	if (ctl_flush_stuck || dspp_flush_stuck)
+		SDE_DBG_DUMP_WQ(0);
 
 	if (event && phys_enc->parent_ops.handle_frame_done)
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent,
