@@ -998,6 +998,9 @@ static int _set_spr_init_feature(struct sde_hw_dspp *hw_dspp,
 			hw_dspp->ops.setup_spr_init_config(hw_dspp, hw_cfg);
 			_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU,
 				hw_cfg->payload != NULL);
+		} else {
+			DRM_ERROR("SPR init skipped DSPP%d virtual %d payload %d\n",
+				hw_dspp->idx, hw_dspp->hw.virtual, !!hw_cfg->payload);
 		}
 	}
 
@@ -1612,6 +1615,21 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 				sde_crtc_state->user_roi_list.roi[0].y1;
 	hw_cfg.overfetch_lines_on_bottom = sde_crtc_state->user_roi_list.roi[0].y2 -
 				sde_crtc_state->user_roi_list.spr_roi[0].y2;
+	if (prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_INIT)
+		DRM_INFO("DEMURA_CP c%u p%ux%u d%ux%u m%u r%d/%d/%ux%u v%d/%d/%ux%u o%u/%u\n",
+				sde_crtc->base.index, hw_cfg.panel_width,
+				hw_cfg.panel_height, hw_cfg.displayh, hw_cfg.displayv,
+				hw_cfg.num_of_mixers,
+				hw_cfg.skip_planes[SB_PLANE_REAL].valid,
+				hw_cfg.skip_planes[SB_PLANE_REAL].plane,
+				hw_cfg.skip_planes[SB_PLANE_REAL].plane_w,
+				hw_cfg.skip_planes[SB_PLANE_REAL].plane_h,
+				hw_cfg.skip_planes[SB_PLANE_VIRT].valid,
+				hw_cfg.skip_planes[SB_PLANE_VIRT].plane,
+				hw_cfg.skip_planes[SB_PLANE_VIRT].plane_w,
+				hw_cfg.skip_planes[SB_PLANE_VIRT].plane_h,
+				hw_cfg.overfetch_lines_on_top,
+				hw_cfg.overfetch_lines_on_bottom);
 
 	SDE_EVT32(prop_node->feature, hw_cfg.panel_width, hw_cfg.panel_height);
 
@@ -3282,12 +3300,29 @@ static void _dspp_spr_dither_install_property(struct drm_crtc *crtc)
 	char feature_name[256];
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
-	u32 version;
+	u32 version = 0;
+	int i;
 
 	kms = get_kms(crtc);
+	if (!kms)
+		return;
 	catalog = kms->catalog;
 
-	version = catalog->dspp[0].sblk->spr_dither.version >> 16;
+	for (i = 0; i < catalog->dspp_count; i++) {
+		if (!test_bit(SDE_DSPP_SPR, &catalog->dspp[i].features))
+			continue;
+		if (!catalog->dspp[i].sblk) {
+			DRM_ERROR("invalid SPR sblk for dspp %d\n",
+					catalog->dspp[i].id);
+			return;
+		}
+		version = catalog->dspp[i].sblk->spr_dither.version >> 16;
+		break;
+	}
+
+	if (i == catalog->dspp_count || !version)
+		return;
+
 	snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",
 		"SDE_DSPP_SPR_DITHER_V", version);
 	switch (version) {
@@ -3307,7 +3342,9 @@ static void _dspp_spr_install_property(struct drm_crtc *crtc)
 {
 	char feature_name[256];
 	struct sde_kms *kms = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
 	u32 version = 0;
+	int i;
 
 	kms = get_kms(crtc);
 	if (!kms) {
@@ -3315,7 +3352,24 @@ static void _dspp_spr_install_property(struct drm_crtc *crtc)
 		return;
 	}
 
-	version = kms->catalog->dspp[0].sblk->spr.version >> 16;
+	catalog = kms->catalog;
+	for (i = 0; i < catalog->dspp_count; i++) {
+		if (!test_bit(SDE_DSPP_SPR, &catalog->dspp[i].features))
+			continue;
+		if (!catalog->dspp[i].sblk) {
+			DRM_ERROR("invalid SPR sblk for dspp %d\n",
+					catalog->dspp[i].id);
+			return;
+		}
+		version = catalog->dspp[i].sblk->spr.version >> 16;
+		break;
+	}
+
+	if (i == catalog->dspp_count) {
+		DRM_ERROR("no SPR DSPP found\n");
+		return;
+	}
+
 	switch (version) {
 	case 2:
 		snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",
@@ -5200,15 +5254,19 @@ static void _spr_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 		return;
 
 	for (i = 0; i < num_mixers; i++) {
-		if (crtc->mixers[i].hw_dspp) {
-			struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
+		struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
 
-			if (!dspp || (dspp->idx - DSPP_0) >= catalog->spr_count)
-				continue;
-			snprintf(blk_name, sizeof(blk_name), "spr%u",
-				(dspp->idx - DSPP_0));
-			sde_kms_info_add_keyint(info, blk_name, 1);
-		}
+		if (!dspp || !dspp->cap ||
+				!test_bit(SDE_DSPP_SPR, &dspp->cap->features))
+			return;
+	}
+
+	for (i = 0; i < num_mixers; i++) {
+		struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
+
+		snprintf(blk_name, sizeof(blk_name), "spr%u",
+			(dspp->idx - DSPP_0));
+		sde_kms_info_add_keyint(info, blk_name, 1);
 	}
 }
 
@@ -5347,6 +5405,9 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;
 	skip_plane->plane_w = (plane_valid) ? skip_blend->width : 0;
 	skip_plane->plane_h = (plane_valid) ? skip_blend->height : 0;
+	DRM_INFO("DEMURA_SKIP crtc%u virtual %d valid %d plane %d size %ux%u\n",
+			crtc->base.index, skip_blend->is_virtual, plane_valid,
+			skip_plane->plane, skip_plane->plane_w, skip_plane->plane_h);
 
 	mutex_unlock(&crtc->crtc_cp_lock);
 }

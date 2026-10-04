@@ -785,11 +785,10 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 
 		topology->num_enc = num_dsc;
 	}
-	/* reset connector lm_mask for every connection event and
-	 * this will get re-populated in resource manager based on
-	 * resolution and topology of display.
+	/* The host assignment is local to this DPU/scanout. Preserve it so the
+	 * connector mode-info blob exposes the Demura instance selected by hardware.
 	 */
-	sde_conn->lm_mask = 0;
+	sde_conn->lm_mask = output->hw_assign.lm_mask;
 
 	topology->num_enc = no_enc;
 	topology->num_intf = single_intf;
@@ -2168,12 +2167,49 @@ static void _process_dspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 			hyp_cfg->dspp[hyp_cfg->dspp_count].virtual = true;
 		hyp_cfg->dspp[hyp_cfg->dspp_count].fixed_ctl_id = output->hw_assign.ctl_id;
 		hyp_cfg->dspp[hyp_cfg->dspp_count].display_idx = disp_idx;
+		VIRTIO_KMS_INFO("HYP_DSPP%d=DSPP%d scanout %d owner %d virtual %d features 0x%lx\n",
+				hyp_cfg->dspp_count, sde_cfg->dspp[j].id, disp_idx,
+				output->hw_assign.dspp_owner,
+				hyp_cfg->dspp[hyp_cfg->dspp_count].virtual,
+				hyp_cfg->dspp[hyp_cfg->dspp_count].features);
 		VIRTIO_KMS_DBG("  HYP_DSPP%d=DSPP%d->CTL%d  virtual %s\n",
 				hyp_cfg->dspp_count, sde_cfg->dspp[j].id,
 				output->hw_assign.ctl_id,
 				hyp_cfg->dspp[hyp_cfg->dspp_count].virtual ? "Yes" : "No");
 		hyp_cfg->dspp_count++;
 	}
+}
+
+/* Expose SPR only for DSPPs assigned to this scanout. */
+static void _process_spr_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		int disp_idx)
+{
+	int k;
+	u32 spr_dspp_count = 0;
+
+	if (!sde_cfg->spr_count)
+		return;
+
+	for (k = 0; k < hyp_cfg->dspp_count; k++) {
+		struct sde_dspp_cfg *dspp = &hyp_cfg->dspp[k];
+
+		if (dspp->display_idx != disp_idx ||
+				!test_bit(SDE_DSPP_SPR, &dspp->features))
+			continue;
+
+		spr_dspp_count++;
+		VIRTIO_KMS_INFO("HYP_SPR scanout %d DSPP%d version 0x%x\n",
+				disp_idx, dspp->id,
+				dspp->sblk ? dspp->sblk->spr.version : 0);
+	}
+
+	if (!spr_dspp_count)
+		return;
+
+	hyp_cfg->spr_count += spr_dspp_count;
+	VIRTIO_KMS_INFO("HYP_SPR scanout %d DSPP count %u total %u\n",
+			disp_idx, spr_dspp_count, hyp_cfg->spr_count);
 }
 
 /* Helper function to process DS blocks */
@@ -2519,6 +2555,9 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 		_process_dspp_blocks(hyp_cfg, sde_cfg, output, i);
 		VIRTIO_KMS_DBG("HYP_DSPP %d\n", hyp_cfg->dspp_count);
+
+		_process_spr_blocks(hyp_cfg, sde_cfg, i);
+		VIRTIO_KMS_DBG("HYP_SPR %d\n", hyp_cfg->spr_count);
 
 		_process_rc_blocks(hyp_cfg, sde_cfg, output);
 		VIRTIO_KMS_DBG("HYP_RC %d\n", hyp_cfg->rc_count);

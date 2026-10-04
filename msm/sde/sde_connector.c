@@ -3759,6 +3759,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		}
 
 		sde_kms_info_add_keystr(info, "mode_name", mode->name);
+		sde_kms_info_add_keyint(info, "lm_mask", c_conn->lm_mask);
 
 		sde_kms_info_add_keyint(info, "bit_clk_rate",
 					mode_info.clk_rate);
@@ -4396,6 +4397,9 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			sde_connector_handle_disp_recovery,
 			c_conn);
 
+	_sde_connector_lm_preference(c_conn, sde_kms,
+			display_info.display_type);
+
 	rc = _sde_connector_install_properties(dev, sde_kms, c_conn,
 		connector_type, display, &display_info);
 	if (rc)
@@ -4415,10 +4419,6 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		SDE_ERROR("failed to create one or more properties\n");
 		goto error_destroy_property;
 	}
-
-	_sde_connector_lm_preference(c_conn, sde_kms,
-			display_info.display_type);
-
 
 	if (!c_conn->is_lb_conn) {
 		_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
