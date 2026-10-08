@@ -62,6 +62,8 @@ enum sde_hw_fence_clients {
 	SDE_HW_FENCE_CLIENT_CTL_3,
 	SDE_HW_FENCE_CLIENT_CTL_4,
 	SDE_HW_FENCE_CLIENT_CTL_5,
+	SDE_HW_FENCE_CLIENT_CTL_6,
+	SDE_HW_FENCE_CLIENT_CTL_7,
 	SDE_HW_FENCE_CLIENT_MAX,
 };
 
@@ -73,7 +75,7 @@ enum sde_hw_fence_clients {
  * the output signal must match with the signals that FenceCTL expects for each display client.
  * This 'hw_fence_data_dpu_client' must be used for HW that does not support dpu-signal.
  */
-struct sde_hw_fence_data hw_fence_data_no_dpu[SDE_HW_FENCE_CLIENT_MAX] = {
+struct sde_hw_fence_data hw_fence_data_no_dpu0[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 8, 14,
 		{2, 3}, 0, 8, 8, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 8,
@@ -85,7 +87,30 @@ struct sde_hw_fence_data hw_fence_data_no_dpu[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 8,
 		18, {10, 11}, 0, 8, 8, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 8,
-		19, {12, 13}, 0, 8, 8, 0, 0}
+		19, {12, 13}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 6, NULL, {0}, NULL, NULL, 8,
+		20, {14, 15}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 7, NULL, {0}, NULL, NULL, 8,
+		21, {16, 17}, 0, 8, 8, 0, 0}
+};
+
+struct sde_hw_fence_data hw_fence_data_no_dpu1[SDE_HW_FENCE_CLIENT_MAX] = {
+	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU1_CTL0, NULL, {0}, NULL, NULL, 8, 14,
+		{2, 3}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 1, NULL, {0}, NULL, NULL, 8,
+		15, {4, 5}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 2, NULL, {0}, NULL, NULL, 8,
+		16, {6, 7}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 3, NULL, {0}, NULL, NULL, 8,
+		17, {8, 9}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 4, NULL, {0}, NULL, NULL, 8,
+		18, {10, 11}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 5, NULL, {0}, NULL, NULL, 8,
+		19, {12, 13}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 6, NULL, {0}, NULL, NULL, 8,
+		20, {14, 15}, 0, 8, 8, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 7, NULL, {0}, NULL, NULL, 8,
+		21, {16, 17}, 0, 8, 8, 0, 0}
 };
 
 /**
@@ -95,7 +120,7 @@ struct sde_hw_fence_data hw_fence_data_no_dpu[SDE_HW_FENCE_CLIENT_MAX] = {
  * the output signal must match with the signals that FenceCTL expects for each display client.
  * This 'hw_fence_data_dpu_client' must be used for HW that supports dpu-signal
  */
-struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
+struct sde_hw_fence_data hw_fence_data_dpu0_client[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 8, 0,
 		{0, 6}, 0, 8, 25, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 8, 1,
@@ -107,7 +132,30 @@ struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 8, 4,
 		{4, 10}, 0, 8, 25, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 8, 5,
-		{5, 11}, 0, 8, 25, 0, 0}
+		{5, 11}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 6, NULL, {0}, NULL, NULL, 8, 6,
+		{12, 12}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 7, NULL, {0}, NULL, NULL, 8, 7,
+		{13, 13}, 0, 8, 25, 0, 0}
+};
+
+struct sde_hw_fence_data hw_fence_data_dpu1_client[SDE_HW_FENCE_CLIENT_MAX] = {
+	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU1_CTL0, NULL, {0}, NULL, NULL, 8, 0,
+		{0, 6}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 1, NULL, {0}, NULL, NULL, 8, 1,
+		{1, 7}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 2, NULL, {0}, NULL, NULL, 8, 2,
+		{2, 8}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 3, NULL, {0}, NULL, NULL, 8, 3,
+		{3, 9}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 4, NULL, {0}, NULL, NULL, 8, 4,
+		{4, 10}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 5, NULL, {0}, NULL, NULL, 8, 5,
+		{5, 11}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 6, NULL, {0}, NULL, NULL, 8, 6,
+		{12, 12}, 0, 8, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 7, NULL, {0}, NULL, NULL, 8, 7,
+		{13, 13}, 0, 8, 25, 0, 0}
 };
 
 /**
@@ -118,7 +166,7 @@ struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
  * This 'hw_fence_data_dpu_client_with_soccp' must be used for HW that supports dpu-signal and
  * SOCCP.
  */
-struct sde_hw_fence_data hw_fence_data_dpu_client_with_soccp[SDE_HW_FENCE_CLIENT_MAX] = {
+struct sde_hw_fence_data hw_fence_data_dpu0_client_with_soccp[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 0, 0,
 		{0, 6}, 0, 46, 25, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 0, 1,
@@ -130,7 +178,30 @@ struct sde_hw_fence_data hw_fence_data_dpu_client_with_soccp[SDE_HW_FENCE_CLIENT
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 0, 4,
 		{4, 10}, 0, 46, 25, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 0, 5,
-		{5, 11}, 0, 46, 25, 0, 0}
+		{5, 11}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 6, NULL, {0}, NULL, NULL, 0, 6,
+		{12, 12}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 7, NULL, {0}, NULL, NULL, 0, 7,
+		{13, 13}, 0, 46, 25, 0, 0}
+};
+
+struct sde_hw_fence_data hw_fence_data_dpu1_client_with_soccp[SDE_HW_FENCE_CLIENT_MAX] = {
+	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU1_CTL0, NULL, {0}, NULL, NULL, 0, 0,
+		{0, 6}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 1, NULL, {0}, NULL, NULL, 0, 1,
+		{1, 7}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 2, NULL, {0}, NULL, NULL, 0, 2,
+		{2, 8}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 3, NULL, {0}, NULL, NULL, 0, 3,
+		{3, 9}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 4, NULL, {0}, NULL, NULL, 0, 4,
+		{4, 10}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 5, NULL, {0}, NULL, NULL, 0, 5,
+		{5, 11}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_6, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 6, NULL, {0}, NULL, NULL, 0, 6,
+		{12, 12}, 0, 46, 25, 0, 0},
+	{SDE_HW_FENCE_CLIENT_CTL_7, SYNX_CLIENT_HW_FENCE_DPU1_CTL0 + 7, NULL, {0}, NULL, NULL, 0, 7,
+		{13, 13}, 0, 46, 25, 0, 0}
 };
 
 void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
@@ -187,12 +258,19 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	hwfence_data = &hw_ctl->hwfence_data;
 
 	if (use_dpu_ipcc) {
-		if (use_soccp)
-			sde_hw_fence_data = hw_fence_data_dpu_client_with_soccp;
-		else
-			sde_hw_fence_data = hw_fence_data_dpu_client;
+		if (use_soccp) {
+			sde_hw_fence_data = (DPUID(sde_kms) == 1) ?
+				hw_fence_data_dpu1_client_with_soccp :
+				hw_fence_data_dpu0_client_with_soccp;
+		} else {
+			sde_hw_fence_data = (DPUID(sde_kms) == 1) ?
+				hw_fence_data_dpu1_client :
+				hw_fence_data_dpu0_client;
+		}
 	} else {
-		sde_hw_fence_data = hw_fence_data_no_dpu;
+		sde_hw_fence_data = (DPUID(sde_kms) == 1) ?
+			hw_fence_data_no_dpu1 :
+			hw_fence_data_no_dpu0;
 	}
 
 	/* some targets use physical instead of virtual client IDs; update reg map accordingly */
