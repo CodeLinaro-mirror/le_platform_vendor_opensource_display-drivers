@@ -1139,6 +1139,8 @@ void virtio_get_scanout_numbers(struct virtio_kms *kms,
 		struct virtio_gpu_resp_display_info *resp)
 {
 	int i;
+	kms->num_scanouts = 0;
+
 	for (i = 0; i < VIRTIO_GPU_MAX_SCANOUTS; i++) {
 		//intentionally not storing the nodes;
 		if (resp->pmodes[i].enabled) {

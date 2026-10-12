@@ -3197,13 +3197,13 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 		global_active_crtc = crtc;
 	}
 
-	if (active_crtc) {
+	if (active_crtc && active_cstate) {
 		drm_for_each_encoder_mask(encoder, active_crtc->dev, active_cstate->encoder_mask)
 			crtc_encoder_cnt++;
 	}
 
 	for_each_new_connector_in_state(state, connector, new_connstate, i) {
-		int conn_mask = active_cstate->connector_mask;
+		int conn_mask = active_cstate ? active_cstate->connector_mask : 0;
 
 		if (drm_connector_mask(connector) & conn_mask) {
 			sde_conn = to_sde_connector(connector);
