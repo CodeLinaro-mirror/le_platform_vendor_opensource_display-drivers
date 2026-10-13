@@ -245,6 +245,14 @@ int msm_hyp_set_dpu_probed(int dpu_id)
 	return 0;
 }
 
+bool msm_hyp_has_displays(int dpu_id)
+{
+	if (!g_hyp_kms || !g_hyp_kms->funcs || !g_hyp_kms->funcs->has_displays)
+		return false;
+
+	return g_hyp_kms->funcs->has_displays(g_hyp_kms, dpu_id);
+}
+
 int hyp_drm_bridge_init(struct drm_device *ddev, struct drm_encoder *encoder,
 		struct msm_hyp_display *display)
 {
@@ -288,7 +296,7 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 	struct drm_plane *plane;
 	int num = 0, i;
 	u32 sspp_id[MAX_PLANES];
-	u32 master_plane_id[MAX_PLANES];
+	u32 master_plane_id[MAX_PLANES] = {0};
 	u32 num_virt_planes = 0;
 	int ret;
 

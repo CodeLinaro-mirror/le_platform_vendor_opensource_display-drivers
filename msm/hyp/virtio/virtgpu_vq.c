@@ -178,6 +178,7 @@ retry_recv_packet:
 			VIRTGPU_VQ_ERR("recv and resp type %s(0x%x)\n",
 				virtio_cmd_type(hdr->type), hdr->type);
 		}
+		rc = -EINVAL;
 	}
 
 end:
@@ -1308,6 +1309,12 @@ static void virtio_get_scanout_attribute(struct virtio_kms *kms,
 	output->attr.avr_min_fps = le32_to_cpu(resp->avr_min_fps);
 	output->attr.avr_step = le32_to_cpu(resp->avr_step);
 
+	if (output->attr.type != VIRTIO_PORT_TYPE_DP) {
+		VIRTGPU_VQ_INFO("Force scanout %d type %d to DP\n",
+				scanout, output->attr.type);
+		output->attr.type = VIRTIO_PORT_TYPE_DP;
+	}
+
 	VIRTGPU_VQ_RSP_DBG("scanout %d attr <%d %d (%dX%d)  org %d> avr< supported: %d minfps: %d step: %d>\n",
 			scanout, output->attr.type,
 			output->attr.connection_status,
@@ -1406,6 +1413,10 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_GET_SCANOUT_PLANES<%d>\n",
 			le32_to_cpu(resp->scanout_id));
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
@@ -1704,14 +1715,11 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	struct virtio_gpu_set_resource_info *cmd_p =
 		kzalloc(sizeof(struct virtio_gpu_set_resource_info),
 				GFP_KERNEL);
-	struct virtio_gpu_ctrl_hdr *resp =
-		kzalloc(sizeof(struct virtio_gpu_ctrl_hdr),
-		       GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0,i;
 
-	if (!cmd_p || !resp) {
+	if (!cmd_p) {
 		VIRTGPU_VQ_ERR("Memory allocation failed\n");
 		goto error;
 	}
@@ -1747,8 +1755,7 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+
 	return rc;
 }
 
@@ -1760,13 +1767,14 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	struct virtio_gpu_set_plane *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_set_plane),
 					GFP_KERNEL);
-	struct virtio_gpu_resp_set_plane *resp =
-		kzalloc(sizeof(struct virtio_gpu_resp_set_plane),
-				GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
 			scanout, plane_id, res_id);
 
@@ -1791,8 +1799,6 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
 
 	return rc;
 }
@@ -1812,6 +1818,10 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_PLANE_CREATE);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	cmd_p->plane_id = cpu_to_le32(plane_id);
@@ -1862,6 +1872,10 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_PLANE_DESTROY <%d : %d>\n",
 			scanout, plane_id);
 
@@ -1906,13 +1920,14 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	struct virtio_gpu_set_plane_properties *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_set_plane_properties),
 					GFP_KERNEL);
-	struct virtio_gpu_resp_plane_properties *resp =
-		kzalloc(sizeof(struct virtio_gpu_resp_plane_properties),
-			GFP_KERNEL);
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
 			"<%d:%d> (0x%llx)\n",
 			scanout, plane_id, prop.mask);
@@ -1954,8 +1969,6 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
 
 	return rc;
 }
@@ -2048,24 +2061,25 @@ struct topology_name_list {
 	enum sde_rm_topology_name name;
 	char *str;
 } topology_names[] = {
-	{SDE_RM_TOPOLOGY_NONE,					"none"},
-	{SDE_RM_TOPOLOGY_SINGLEPIPE,			"singlepipe"},
-	{SDE_RM_TOPOLOGY_SINGLEPIPE_DSC,		"singlepipe_dsc"},
-	{SDE_RM_TOPOLOGY_SINGLEPIPE_VDC,		"singlepipe_vdc"},
-	{SDE_RM_TOPOLOGY_DUALPIPE,				"dualpipe"},
-	{SDE_RM_TOPOLOGY_DUALPIPE_DSC,			"dualpipe_dsc"},
-	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE,		"dualpipemerge"},
-	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC,	"dualpipemerge_dsc"},
-	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC,	"dualpipemerge_vdc"},
-	{SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE,		"dualpipe_dscmerge"},
-	{SDE_RM_TOPOLOGY_PPSPLIT,				"ppsplit"},
-	{SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE,		"quadpipemerge"},
-	{SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC,	"quadpipe_3dmerge_dsc"},
-	{SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,		"quadpipe_dscmerge"},
-	{SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE,	"quadpipe_dsc4hsmerge"},
+	{SDE_RM_TOPOLOGY_NONE,                  "none"},
+	{SDE_RM_TOPOLOGY_SINGLEPIPE,            "singlepipe"},
+	{SDE_RM_TOPOLOGY_SINGLEPIPE_DSC,        "singlepipe_dsc"},
+	{SDE_RM_TOPOLOGY_SINGLEPIPE_VDC,        "singlepipe_vdc"},
+	{SDE_RM_TOPOLOGY_DUALPIPE,              "dualpipe"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_DSC,          "dualpipe_dsc"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE,      "dualpipemerge"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC,  "dualpipemerge_dsc"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC,  "dualpipemerge_vdc"},
+	{SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE,     "dualpipe_dscmerge"},
+	{SDE_RM_TOPOLOGY_PPSPLIT,               "ppsplit"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE,      "quadpipemerge"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC,  "quadpipe_3dmerge_dsc"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,     "quadpipe_dscmerge"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE,  "quadpipe_dsc4hsmerge"},
+	{SDE_RM_TOPOLOGY_QUADPIPE_MERGE,        "quadpipe_merge"},
 	{SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,     "dualpipe_loopback"},
 	{SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,     "quadpipe_loopback"},
-	{SDE_RM_TOPOLOGY_MAX,     				NULL},
+	{SDE_RM_TOPOLOGY_MAX,                   NULL},
 };
 
 static inline int count_of_ones(u32 data)
@@ -2110,6 +2124,8 @@ static const struct sde_rm_topology_def g_topology_table[SDE_RM_TOPOLOGY_MAX] = 
 			MSM_DISPLAY_COMPRESSION_DSC },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE, 4, 4, 1, 1, false,
 			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_MERGE,       4, 0, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
 	{   SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,    2, 0, 0, 0, false,
 			MSM_DISPLAY_COMPRESSION_NONE },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,    4, 0, 0, 0, false,
@@ -2145,6 +2161,8 @@ static enum sde_rm_topology_name get_topology_name(struct display_hw_assigment *
 				comp_type == g_topology_table[i].comp_type)
 			return g_topology_table[i].top_name;
 
+	VIRTGPU_VQ_ERR("%s: no match for lm=%d intf=%d comp_enc=%d comp_type=%d\n",
+			__func__, num_lm, num_intf, num_comp_enc, comp_type);
 	return SDE_RM_TOPOLOGY_NONE;
 }
 
@@ -2154,7 +2172,7 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 {
 #define MAX_LINE_LENGTH 128
 	struct virtio_kms_output *output = &kms->outputs[scanout];
-	char line[MAX_LINE_LENGTH], value[MAX_LINE_LENGTH];
+	char line[MAX_LINE_LENGTH] = {0}, value[MAX_LINE_LENGTH] = {0};
 	const char *blob = resp->blob;
 	const char *ptr = blob;
 	struct display_hw_assigment *assign = &output->hw_assign;

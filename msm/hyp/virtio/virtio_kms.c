@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt)	"[drm:virtio-kms:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sort.h>
+#include <linux/log2.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
 //#include <soc/qcom/boot_stats.h>
@@ -490,8 +491,14 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	case PANEL_ROTATE_NONE:
 		sde_kms_info_add_keystr(info, "panel orientation", "none");
 		break;
+	case PANEL_ROTATE_90:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 90");
+		break;
 	case PANEL_ROTATE_180:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz & vert flip");
+		break;
+	case PANEL_ROTATE_270:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 270");
 		break;
 	case PANEL_ROTATE_H_FLIP:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz flip");
@@ -516,7 +523,7 @@ void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
 	struct sde_connector *sde_conn)
 {
 	uint32_t panel_colorspace;
-	bool hdr_support;
+	bool hdr_support = false;
 
 	panel_colorspace = priv->base.panel_colorspace;
 
@@ -703,10 +710,10 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	struct msm_resource_caps_info avail_dp_res;
 	struct msm_display_info *info;
 	int rc = 0;
-	struct msm_hyp_kms *hyp_kms = hyp_display->sde_kms->hyp_kms;
-	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
-	struct virtio_connector_info_priv *conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
-	struct virtio_kms_output *output = &kms->outputs[conn_priv->scanout];
+	struct msm_hyp_kms *hyp_kms;
+	struct virtio_kms *kms;
+	struct virtio_connector_info_priv *conn_priv;
+	struct virtio_kms_output *output;
 	u32 num_dsc = 0;
 
 	if (!drm_mode || !mode_info || !avail_res ||
@@ -715,6 +722,11 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 		VIRTIO_KMS_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	hyp_kms = hyp_display->sde_kms->hyp_kms;
+	kms = to_virtio_kms(hyp_kms);
+	conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
+	output = &kms->outputs[conn_priv->scanout];
 
 	memset(mode_info, 0, sizeof(*mode_info));
 
@@ -747,11 +759,30 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 			VIRTIO_KMS_ERR("error getting dsc count. rc:%d\n", rc);
 			return rc;
 		}
+
+		/*
+		 * Round up to the nearest supported LM/DSC count (1, 2, 4).
+		 * Width-based DSC calculation can yield unsupported values
+		 * SDE only supports topologies with 1, 2, or 4 LMs —
+		 * round up to the next power of 2 to pick a valid topology.
+		 */
+		if (num_dsc > 0)
+			num_dsc = roundup_pow_of_two(num_dsc);
+
 		if (num_dsc > avail_dp_res.num_dsc) {
-			VIRTIO_KMS_ERR("exceed dsc count %d > %d\n", num_dsc, avail_dp_res.num_dsc);
+			VIRTIO_KMS_ERR("insufficient DSC blocks: need %d avail %d hdisplay=%d\n",
+					num_dsc, avail_dp_res.num_dsc, drm_mode->hdisplay);
 			return -EINVAL;
 		}
+
 		topology->num_lm = max(topology->num_lm, num_dsc);
+
+		if (topology->num_lm > avail_dp_res.num_lm) {
+			VIRTIO_KMS_ERR("insufficient LM blocks: need %d avail %d hdisplay=%d\n",
+					topology->num_lm, avail_dp_res.num_lm, drm_mode->hdisplay);
+			return -EINVAL;
+		}
+
 		topology->num_enc = num_dsc;
 	}
 	/* reset connector lm_mask for every connection event and
@@ -947,9 +978,14 @@ int virtio_connector_get_qsync_min_fps(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
 
-	if (!sde_conn_state || !sde_conn_state->mode_info.qsync_min_fps) {
-		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, qsync_min_fps: %d",
-			sde_conn_state, sde_conn_state->mode_info.qsync_min_fps);
+	if (!sde_conn_state) {
+		VIRTIO_KMS_ERR("Invalid conn_state: NULL");
+		return -EINVAL;
+	}
+
+	if (!sde_conn_state->mode_info.qsync_min_fps) {
+		VIRTIO_KMS_ERR("Invalid qsync_min_fps: %d",
+			sde_conn_state->mode_info.qsync_min_fps);
 		return -EINVAL;
 	}
 
@@ -960,9 +996,14 @@ int virtio_connector_get_avr_step_fps(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
 
-	if (!sde_conn_state || !sde_conn_state->mode_info.avr_step_fps) {
-		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, avr_step_fps: %d",
-			sde_conn_state, sde_conn_state->mode_info.avr_step_fps);
+	if (!sde_conn_state) {
+		VIRTIO_KMS_ERR("Invalid conn_state: NULL");
+		return -EINVAL;
+	}
+
+	if (!sde_conn_state->mode_info.avr_step_fps) {
+		VIRTIO_KMS_ERR("Invalid avr_step_fps: %d",
+			sde_conn_state->mode_info.avr_step_fps);
 		return -EINVAL;
 	}
 
@@ -1845,15 +1886,31 @@ static void _validate_and_set_mixer_blend_stages(struct sde_mdss_cfg *hyp_cfg,
 }
 
 static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
-		unsigned long *avail_pipes, u32 disp_idx)
+		unsigned long *avail_pipes, struct virtio_kms_output *output,
+		u32 disp_idx)
 {
-	int i;
+	int i, k;
+	bool rec_only;
 
-	if (!avail_pipes)
+	if (!avail_pipes || disp_idx >= MAX_DISPLAYNODES)
 		return;
 
 	for (i = 0; i < SSPP_MAX; i++) {
-		if (test_bit(i, avail_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+		if (!test_bit(i, avail_pipes) || pipe_active_tbl[i] == CTL_INVALID_BIT)
+			continue;
+
+		/* Skip REC-only pipes — they use SSPP-level active registers */
+		rec_only = false;
+		for (k = 0; k < output->plane_cnt && k < VIRTIO_GPU_MAX_PLANES; k++) {
+			if (output->plane_caps[k].sspp_id != i)
+				continue;
+			if (output->plane_caps[k].rect_mask == 0x1 ||
+					output->plane_caps[k].rect_mask == 0x2)
+				rec_only = true;
+			break;
+		}
+
+		if (!rec_only)
 			hyp_cfg->pipe_active_mask[disp_idx] |= BIT(pipe_active_tbl[i]);
 	}
 }
@@ -1870,14 +1927,14 @@ static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 
 	VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
 
-	for (k = 0; k < output->plane_cnt; k++) {
+	for (k = 0; k < output->plane_cnt && k < VIRTIO_GPU_MAX_PLANES; k++) {
 		for (j = 0; j < sde_cfg->sspp_count; j++) {
 			if (output->plane_caps[k].sspp_id != sde_cfg->sspp[j].id)
 				continue;
 
 			hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
 
-			if (output->plane_caps[k].rect_mask & 0x3) {
+			if ((output->plane_caps[k].rect_mask & 0x3) == 0x3) {
 				// Keep original smart dma feature
 				/*
 				 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
@@ -2382,7 +2439,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 		/* Process hardware blocks using helper functions */
 		_process_sspp_blocks(hyp_cfg, sde_cfg, output, avail_pipes[i], i);
-		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], i);
+		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], output, i);
 		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x, i %d\n",
 				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask[i], i);
 
@@ -2981,6 +3038,19 @@ int virtio_kms_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
 	return virtio_gpu_cmd_set_power(kms, dpu_id, power_level);
 }
 
+static bool virtio_kms_has_displays(struct msm_hyp_kms *hyp_kms, int dpu_id)
+{
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	int i;
+
+	for (i = 0; i < kms->num_scanouts; i++) {
+		if (kms->outputs[i].hw_assign.dpu_id == dpu_id)
+			return true;
+	}
+
+	return false;
+}
+
 static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.get_displays = virtio_kms_get_displays,
 	.get_connector_infos = virtio_kms_get_connector_infos,
@@ -2991,6 +3061,7 @@ static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.update_hw_reservation = virtio_kms_update_hw_reservation,
 	.register_event = virtio_kms_register_event,
 	.set_power_level = virtio_kms_set_power_level,
+	.has_displays = virtio_kms_has_displays,
 };
 
 /*
@@ -3207,6 +3278,9 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	int rc = 0;
 	uint32_t scanout;
 
+	kms->has_edid = true;
+	VIRTIO_KMS_INFO("EDID support available.\n");
+
 //	if (virtio_has_feature(kms->vdev, VIRTIO_GPU_F_EDID)) {
 //		kms->has_edid = true;
 //		DRM_INFO("EDID support available.\n");
@@ -3279,11 +3353,12 @@ static int _virtio_kms_parse_client_hab_id(struct device_node *node, uint32_t *c
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
 	int ret = 0;
-	uint32_t client_id = kms->client_id;
+	uint32_t client_id;
 	if (!kms) {
 		VIRTIO_KMS_ERR("kms NULL\n");
 		return -EINVAL;
 	}
+	client_id = kms->client_id;
 
 	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
 	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
@@ -3334,7 +3409,7 @@ bool is_dbl_handle_valid(int32_t hab_dbl_handle)
 		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
 	{
 		return true;
-	 } else {
+	} else {
 		return false;
 	}
 }
@@ -3352,19 +3427,20 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 {
 	struct virq_info_t *virq_info = (struct virq_info_t *) irq_data;
 	uint32_t dpu_id;
-	uint32_t dbl_idx;
 	struct msm_kms *msm_kms = NULL;
+
+	if (irq_data == NULL)
+		return 0;
 
 	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
 
-	if (is_dbl_handle_valid(virq_info->hab_dbl_handle) && irq_data != NULL)
+	if (is_dbl_handle_valid(virq_info->hab_dbl_handle))
 	{
-		/* dbl handle is either 1 or 2 in Android GVM, 3 or 4 in Linux GVM
-		Both GVMs are mutually exclusive and share the same virq_info[2] array
-		The module maps handle 1->0, 2->1, 3->0, 4->1 intentionally. */
-		dbl_idx = (virq_info->hab_dbl_handle - 1) % VIRTIO_GPU_MAX_VIRQ;
-
-		dpu_id = virq_info->kms->virq_info[dbl_idx]->dpu_id;
+		/*
+		 * dpu_id is stored directly in virq_info at registration time,
+		 * so the callback reads it without any dependency on dbl_handle values.
+		 */
+		dpu_id = virq_info->dpu_id;
 		msm_kms = &virq_info->kms->base.sde_kms[dpu_id]->base;
 		msm_hyp_irq(msm_kms);
 	}
@@ -3383,7 +3459,8 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 {
 	int32_t dbl_handle = -1;
 	const uint32_t pvm_hab_vmid = 0x0;
-	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {3001,3002}; /* dpu id as defined by HAB */
+	/* dpu id as defined by HAB */
+	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {VIRQ_DISP1, VIRQ_DISP2};
 	int ret = -1;
 
 	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
@@ -3399,9 +3476,10 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 			return ret;
 		}
 		virq_info->hab_dbl_handle = dbl_handle;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ] = virq_info;
-		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ]->dpu_id = virq_idx;
-		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d\n", dbl_handle);
+		kms->virq_info[virq_idx] = virq_info;
+		kms->virq_info[virq_idx]->dpu_id = virq_idx;
+		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d, dpu_id: %d\n",
+				dbl_handle, virq_idx);
 	}
 
 	return 0;

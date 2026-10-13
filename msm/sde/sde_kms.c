@@ -1770,6 +1770,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			SDE_EVT32(DRMID(crtc), DRMID(encoder), cwb_disabling,
 					ret, SDE_EVTLOG_ERROR);
 			sde_crtc_request_frame_reset(crtc, encoder);
+			sde_crtc_complete_flip(crtc, NULL);
 			break;
 		}
 
@@ -2675,8 +2676,10 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	_sde_kms_mmu_destroy(sde_kms);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
-	atomic_set(&sde_kms->base.dpu_power_on, 0);
-	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+	if (atomic_read(&sde_kms->base.dpu_power_on)) {
+		atomic_set(&sde_kms->base.dpu_power_on, 0);
+		msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+	}
 #endif
 }
 
@@ -3160,7 +3163,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 		enum sde_crtc_vm_req vm_req, bool vm_owns_hw)
 {
 	struct drm_crtc *crtc, *active_crtc = NULL, *global_active_crtc = NULL;
-	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate;
+	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate = NULL;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_state *new_connstate;
@@ -3170,7 +3173,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	struct dsi_display *dsi_display;
 	uint32_t i, commit_crtc_cnt = 0, global_crtc_cnt = 0;
 	uint32_t crtc_encoder_cnt = 0;
-	enum sde_crtc_idle_pc_state idle_pc_state;
+	enum sde_crtc_idle_pc_state idle_pc_state = 0;
 	int rc = 0;
 
 	for_each_oldnew_crtc_in_state(state, crtc, old_cstate, new_cstate, i) {
@@ -3237,6 +3240,10 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	}
 
 	if ((vm_req == VM_REQ_ACQUIRE) && !vm_owns_hw) {
+		if (!vm_ops) {
+			SDE_ERROR("VM acquire failed; vm_ops is NULL\n");
+			return -EINVAL;
+		}
 		rc = vm_ops->vm_acquire(sde_kms);
 		if (rc) {
 			SDE_ERROR("VM acquire failed; hw_owner:%d, rc:%d\n", vm_owns_hw, rc);
@@ -5319,6 +5326,10 @@ static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
 	/* Store the DPU ID */
 	sde_kms->dpu_id = dpu_id;
 	sde_kms->hyp_kms = msm_hyp_get_kms();
+
+	if (!msm_hyp_has_displays(dpu_id))
+		return -ENODEV;
+
 	/* Make sure core clock/power is up, to able read registers for HW init */
 	rc = msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
 
@@ -5498,7 +5509,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	rc = _sde_kms_hyp_power_up_dpu(sde_kms, dev);
 	if (rc) {
-		SDE_ERROR("Failed to power up DPU core!\n");
+		if (rc != -ENODEV)
+			SDE_ERROR("Failed to power up DPU core!\n");
 		goto power_error;
 	}
 #endif
@@ -5759,7 +5771,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
-	// No hardware irq mapped to guest VM
+	/* No hardware IRQ mapped to guest VM; initialize mask for cpu0 PM QoS voting */
+	cpumask_clear(&sde_kms->irq_cpu_mask);
+	cpumask_set_cpu(0, &sde_kms->irq_cpu_mask);
 #else
 	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
 	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);

@@ -22,6 +22,19 @@
 		(e) && (e)->base.hw_intf ? \
 		(e)->base.hw_intf->idx - INTF_0 : -1, ##__VA_ARGS__)
 
+#define SDE_CTL_FLUSH_CTL_LM_MASK  (BIT(17) |        /* CTL       */ \
+					BIT(6)  |        /* LM0       */ \
+					BIT(7)  |        /* LM1       */ \
+					BIT(8)  |        /* LM2       */ \
+					BIT(9)  |        /* LM3       */ \
+					BIT(10) |        /* LM4       */ \
+					BIT(20) |        /* LM5       */ \
+					BIT(21) |        /* LM6       */ \
+					BIT(27) |        /* LM7       */ \
+					BIT(30) |        /* PERIPH    */ \
+					BIT(31))         /* INTF      */
+
+
 #define to_sde_encoder_phys_hyp(x) \
 	container_of(x, struct sde_encoder_phys_hyp, base)
 
@@ -60,7 +73,7 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client =  NULL;
 	unsigned long lock_flags;
 	u32 flush_complete_register = ~0;
 	u32 reset_status = 0;
@@ -71,6 +84,8 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 
 	if (!phys_enc)
 		return;
+
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
@@ -90,12 +105,9 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	if (hw_ctl->ops.get_flush_complete_register)
 		flush_complete_register = hw_ctl->ops.get_flush_complete_register(hw_ctl);
 
-	if (flush_complete_register & hw_ctl->flush.pending_flush_mask) {
-		SDE_DEBUG("not flushed: flush_complete_reg=0x%x pending_flush_mask=0x%x\n",
-			flush_complete_register,
-			hw_ctl->flush.pending_flush_mask);
+	if (flush_complete_register & hw_ctl->flush.pending_flush_mask
+		& ~SDE_CTL_FLUSH_CTL_LM_MASK)
 		goto not_flushed;
-	}
 
 	/*
 	 * When flush_mask is changed to 0, we need additional vsync
@@ -103,11 +115,6 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	 */
 	if (flush_complete_register && !hw_ctl->flush.pending_flush_mask
 		&& hw_ctl->flush.previous_flush_mask) {
-		SDE_DEBUG("not flushed: flush_complete_reg=0x%x pending_flush_mask=0x%x "
-			"previous_flush_mask=0x%x\n",
-			flush_complete_register,
-			hw_ctl->flush.pending_flush_mask,
-			hw_ctl->flush.previous_flush_mask);
 		hw_ctl->flush.previous_flush_mask = 0;
 		goto not_flushed;
 	}
@@ -505,8 +512,9 @@ static int _sde_encoder_phys_hyp_wait_for_vblank(
 			&& phys_enc->parent_ops.handle_frame_done) {
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 
-		/* notify only on actual timeout cases */
-		if ((ret == -ETIMEDOUT) && sde_encoder_recovery_events_enabled(phys_enc->parent))
+		/* Notify on actual timeouts only, not on HPD plug-out. */
+		if ((ret == -ETIMEDOUT) && sde_encoder_recovery_events_enabled(phys_enc->parent) &&
+				conn->status != connector_status_disconnected)
 			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
 				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
 	}
@@ -656,13 +664,15 @@ static void sde_encoder_phys_hyp_handle_post_kickoff(
 		struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_hyp *hyp_enc;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_virt *sde_enc;
 	u32 avr_mode;
 
 	if (!phys_enc) {
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	hyp_enc = to_sde_encoder_phys_hyp(phys_enc);
 	SDE_DEBUG_HYPENC(hyp_enc, "enable_state %d\n", phys_enc->enable_state);

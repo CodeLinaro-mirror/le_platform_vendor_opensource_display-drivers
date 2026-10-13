@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries..
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -533,12 +533,14 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	struct sde_hw_pp_vsync_info info[MAX_CHANNELS_PER_ENC] = {{0}};
 	struct sde_encoder_phys_cmd_te_timestamp *te_timestamp;
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 fence_ready = 0;
 
 	if (!phys_enc || !phys_enc->hw_pp || !phys_enc->hw_intf || !phys_enc->hw_ctl)
 		return;
+
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
@@ -955,7 +957,7 @@ static int _sde_encoder_phys_cmd_poll_write_pointer_started(
 			to_sde_encoder_phys_cmd(phys_enc);
 	struct sde_hw_pingpong *hw_pp = phys_enc->hw_pp;
 	struct sde_hw_intf *hw_intf = phys_enc->hw_intf;
-	struct sde_hw_pp_vsync_info info;
+	struct sde_hw_pp_vsync_info info = {0};
 	u32 timeout_us = SDE_ENC_WR_PTR_START_TIMEOUT_US;
 	int ret = 0;
 
@@ -1536,8 +1538,8 @@ static void _sde_encoder_update_multi_te_config(struct sde_encoder_phys *phys_en
 
 static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_enc)
 {
-	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_phys_cmd *cmd_enc;
+	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_tear_check tc_cfg = { 0 };
 	struct drm_display_mode *mode;
 	bool tc_enable = true;
@@ -1550,6 +1552,9 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	mode = &phys_enc->cached_mode;
 
 	SDE_DEBUG_CMDENC(cmd_enc, "pp %d, intf %d\n",

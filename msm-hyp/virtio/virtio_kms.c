@@ -18,7 +18,9 @@
 #include "virtio_ext.h"
 #include "virtgpu_vq.h"
 #include <linux/habmm.h>
-#define CLIENT_ID_LEN_IN_CHARS 5
+#define HAB_MMID_CREATE(major, minor) ((major&0xFFFF) | ((minor&0xFF)<<16))
+
+#define CLIENT_HAB_ID_LEN_IN_CHARS 2 /* the length includes null terminating char */
 
 #define DISPLAY_DEVICE_MAX_WIDTH      10240
 #define DISPLAY_DEVICE_MAX_HEIGHT     4096
@@ -796,7 +798,7 @@ static void virtio_kms_plane_zpos_adj_fe(struct drm_crtc *crtc,
 	struct virtio_crtc_info_priv *crtc_priv = container_of(c->info,
 			struct virtio_crtc_info_priv,
 			base);
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 
 	drm_for_each_plane_mask(plane, ddev, crtc->state->plane_mask) {
 		new_pstate = to_msm_hyp_plane_state(plane->state);
@@ -1095,7 +1097,11 @@ static bool virtio_kms_plane_is_color_changed(
 
 	p = to_msm_hyp_plane(plane);
 	plane_priv = container_of(p->info, struct virtio_plane_info_priv, base);
-	kms = plane_priv ? plane_priv->kms : NULL;
+	if (!plane_priv) {
+		pr_err("Plane prev info is NULL\n");
+		return false;
+	}
+	kms = plane_priv->kms;
 
 	_virtio_kms_get_color_buff_idx(kms,
 		plane_priv->plane_id,
@@ -2007,7 +2013,7 @@ static int virtio_kms_create_colorbuffer(struct device *device,
 	int32_t client_id = 0;
 	uint32_t export_id = 0;
 	dma_addr_t dma_handle;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info  mem;
 
 	prop.color_buf[0]  = 0;
@@ -2212,7 +2218,7 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms, struct device *dev)
 	int rc = 0;
 	uint32_t num_planes = 0;
 	struct virtio_kms_output *output;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info mem = { 0 };
 	int buf_len = VIRTIO_COLOR_BUF_SIZE;
 	dma_addr_t *dma_handle = NULL;
@@ -2413,36 +2419,35 @@ error:
 	return rc;
 }
 
-#if 0
-static int _virtio_kms_parse_client_id(struct device_node *node,
-		uint32_t *client_id)
+
+
+/**
+ * _virtio_kms_parse_client_hab_id() - function to parse client-hab-id from device tree
+ * @node: pointer to device tree node
+ * @client_hab_id: pointer to client hab id
+ *
+ * Return: integer error code
+ *
+ */
+static int _virtio_kms_parse_client_hab_id(struct device_node *node, uint32_t *client_hab_id)
 {
 	int len = 0;
 	int ret = 0;
-	const char *client_id_str;
+	const char *client_hab_id_str = NULL;
 
-	client_id_str = of_get_property(node, "qcom,client-id", &len);
-	if (!client_id_str || len != CLIENT_ID_LEN_IN_CHARS) {
-		pr_err("client_id_str len(%d) is invalid\n", len);
+	client_hab_id_str = of_get_property(node, "qcom,client-hab-id", &len);
+	if (!client_hab_id_str || len != CLIENT_HAB_ID_LEN_IN_CHARS) {
+		pr_err("client_hab_id_str len(%d) is invalid\n", len);
 		ret = -EINVAL;
 	} else {
-		/* Try node as a hex value */
-		ret = kstrtouint(client_id_str, 16, client_id);
+		ret = kstrtouint(client_hab_id_str, 10, client_hab_id);
 		if (ret) {
-			/* Otherwise, treat at 4cc code */
-			*client_id = fourcc_code(client_id_str[0],
-					client_id_str[1],
-					client_id_str[2],
-					client_id_str[3]);
-
-			ret = 0;
+			pr_err("error parsing client hab id\n");
 		}
 	}
 
 	return ret;
 }
-
-#endif
 
 
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
@@ -2653,6 +2658,11 @@ exit:
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)
 {
 	struct drm_crtc *crtc = kms->outputs[scanout].crtc;
+
+	if (!crtc) {
+		pr_err("virtio: crtc is NULL for scanout %d\n", scanout);
+		return;
+	}
 	msm_hyp_crtc_vblank_done(crtc);
 
 	if (kms->outputs[scanout].vblank_enabled) {
@@ -2742,14 +2752,14 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	if (!kms)
 		return -ENOMEM;
 
-//        ret = _virtio_kms_parse_client_id(dev->of_node, &kms->client_id);
-//        if (ret)
-//                return ret;
+	ret = _virtio_kms_parse_client_hab_id(dev->of_node, &kms->client_hab_id);
+	if (ret)
+		return ret;
 
 	kms->client_id = 0;
 
-	kms->mmid_cmd = MM_DISP_1;
-	kms->mmid_event = MM_DISP_3;
+	kms->mmid_cmd = HAB_MMID_CREATE(MM_DISP_1, kms->client_hab_id);
+	kms->mmid_event = HAB_MMID_CREATE(MM_DISP_3, kms->client_hab_id);
 
 //	ret = _virtio_kms_parse_capsets(dev->of_node, &kms->num_capsets);
 //	if (ret)
