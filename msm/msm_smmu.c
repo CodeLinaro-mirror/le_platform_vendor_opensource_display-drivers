@@ -248,14 +248,16 @@ static int msm_smmu_unmap(struct msm_mmu *mmu, uint64_t iova,
 static void msm_smmu_destroy(struct msm_mmu *mmu)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
-	struct platform_device *pdev = to_platform_device(smmu->client_dev);
-	struct iommu_domain *domain = iommu_get_domain_for_dev(smmu->client_dev);
+	struct platform_device *pdev;
+	struct iommu_domain *domain;
 
-	if (domain)
-		iommu_set_fault_handler(domain, NULL, NULL);
-
-	if (smmu->client_dev)
+	if (smmu->client_dev) {
+		pdev = to_platform_device(smmu->client_dev);
+		domain = iommu_get_domain_for_dev(smmu->client_dev);
+		if (domain)
+			iommu_set_fault_handler(domain, NULL, NULL);
 		platform_device_unregister(pdev);
+	}
 	kfree(smmu);
 }
 
@@ -323,7 +325,7 @@ static void msm_smmu_unmap_dma_buf(struct msm_mmu *mmu, struct sg_table *sgt,
 				dir, client->secure, flags);
 	}
 
-	if (!(flags & MSM_BO_EXTBUF))
+	if (!(flags & MSM_BO_EXTBUF) && sgt->sgl)
 		dma_unmap_sg(client->dev, sgt->sgl, sgt->nents, dir);
 }
 

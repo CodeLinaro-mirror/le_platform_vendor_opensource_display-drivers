@@ -3208,7 +3208,7 @@ void sde_plane_flush(struct drm_plane *plane)
 	else if (psde->pipe_hw && pstate->csc_ptr && psde->pipe_hw->ops.setup_csc)
 		psde->pipe_hw->ops.setup_csc(psde->pipe_hw, pstate->csc_ptr);
 
-	if (psde->pipe_hw->ops.local_flush)
+	if (psde->pipe_hw && psde->pipe_hw->ops.local_flush)
 		psde->pipe_hw->ops.local_flush(psde->pipe_hw, pstate->multirect_index);
 
 	/* flag h/w flush complete */
@@ -4054,7 +4054,7 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	 * proper CAC to non-CAC transition
 	 */
 	if (old_cac_mode != SDE_CAC_NONE) {
-		if (psde->pipe_hw->ops.setup_cac_ctrl)
+		if (psde->pipe_hw && psde->pipe_hw->ops.setup_cac_ctrl)
 			psde->pipe_hw->ops.setup_cac_ctrl(psde->pipe_hw, SDE_CAC_NONE,
 				false, 0xf);
 		if (ctl)
@@ -4474,6 +4474,7 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 
 	index = (master_plane_id == 0) ? 0 : 1;
 	if (test_bit(SDE_FEATURE_DEMURA, catalog->features) &&
+	    psde->pipe < SSPP_MAX &&
 	    catalog->demura_supported[psde->pipe][index] != ~0x0)
 		sde_kms_info_add_keyint(info, "demura_block",
 			catalog->demura_supported[psde->pipe][index]);
@@ -5720,7 +5721,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
 	enum drm_plane_type type;
-	struct sde_vbif_clk_client clk_client;
+	struct sde_vbif_clk_client clk_client = {0};
 	int ret = -EINVAL;
 
 	if (!dev) {

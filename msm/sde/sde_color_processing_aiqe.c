@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -43,6 +43,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	u32 major_version, version;
+
+	if (!crtc) {
+		DRM_ERROR("invalid crtc\n");
+		return;
+	}
 
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
@@ -251,12 +256,16 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 void sde_set_mdnie_psr(struct sde_crtc *sde_crtc)
 {
 	struct sde_hw_dspp *hw_dspp = NULL;
-	u32 num_mixers = sde_crtc->num_mixers;
+	u32 num_mixers;
 	int i;
 
+	if (!sde_crtc)
+		return;
+
+	num_mixers = sde_crtc->num_mixers;
 	hw_dspp = sde_crtc->mixers[0].hw_dspp;
 
-	if (!sde_crtc || !hw_dspp)
+	if (!hw_dspp)
 		return;
 
 	if (hw_dspp->ops.setup_mdnie_psr) {

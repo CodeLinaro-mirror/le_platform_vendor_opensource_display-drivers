@@ -29,6 +29,7 @@
 #define MAX_VERT_DECIMATION    4
 #define SSPP_UNITY_SCALE       1
 #define MAX_NUM_LIMIT_PAIRS    16
+#define MAX_NUM_STAGES         11
 #define DBG_BUF_COUNT          50
 #define DEFAULT_MAX_MDP_CLK    575
 #define MAX_LAYERS_MULTIPIPE   4
@@ -798,7 +799,7 @@ static void virtio_kms_plane_zpos_adj_fe(struct drm_crtc *crtc,
 	struct virtio_crtc_info_priv *crtc_priv = container_of(c->info,
 			struct virtio_crtc_info_priv,
 			base);
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 
 	drm_for_each_plane_mask(plane, ddev, crtc->state->plane_mask) {
 		new_pstate = to_msm_hyp_plane_state(plane->state);
@@ -1097,7 +1098,11 @@ static bool virtio_kms_plane_is_color_changed(
 
 	p = to_msm_hyp_plane(plane);
 	plane_priv = container_of(p->info, struct virtio_plane_info_priv, base);
-	kms = plane_priv ? plane_priv->kms : NULL;
+	if (!plane_priv) {
+		pr_err("Plane prev info is NULL\n");
+		return false;
+	}
+	kms = plane_priv->kms;
 
 	_virtio_kms_get_color_buff_idx(kms,
 		plane_priv->plane_id,
@@ -1447,6 +1452,7 @@ static int virtio_kms_plane_atomic_check(struct drm_plane *plane,
 	ret = _virtio_kms_plane_rot_atomic_check(plane, atomic_state);
 	if (ret)
 		goto exit;
+
 exit:
 	return ret;
 }
@@ -1573,6 +1579,7 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 			priv->base.max_width =
 				kms->outputs[i].plane_caps[j].max_width;
 			priv->base.max_bandwidth = 4500000000;
+			priv->base.max_bandwidth_high = 5200000000;
 
 			if (!kms->max_sdma_width && master_idx >= 0)
 				kms->max_sdma_width = priv->base.max_width;
@@ -1657,7 +1664,7 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 	struct virtio_crtc_info_priv *priv;
 	int i;
 	int plane_cnt = 0;
-	uint32_t plane_idx = 0;
+
 	if (!kms || !crtc_num)
 		return -EINVAL;
 
@@ -1672,12 +1679,15 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 			return -ENOMEM;
 		}
 
-		priv->base.max_blendstages = 0;
-		for (plane_idx = 0; plane_idx < kms->outputs[i].plane_cnt; plane_idx++) {
-			if (kms->outputs[i].plane_caps[plane_idx].master_plane_id < 0)
-				++priv->base.max_blendstages;
+		priv->base.max_blendstages = kms->outputs[i].plane_cnt;
+
+		if (priv->base.max_blendstages > MAX_NUM_STAGES) {
+			priv->base.max_blendstages = MAX_NUM_STAGES;
+			pr_debug("plane count %d exceeds the maximum blend stage %d of crtc\n",
+					kms->outputs[i].plane_cnt, priv->base.max_blendstages);
 		}
 		pr_err("virtio : blendstage %d\n", priv->base.max_blendstages);
+
 		priv->base.primary_plane_index = plane_cnt;
 		plane_cnt += kms->outputs[i].plane_cnt;
 
@@ -2009,7 +2019,7 @@ static int virtio_kms_create_colorbuffer(struct device *device,
 	int32_t client_id = 0;
 	uint32_t export_id = 0;
 	dma_addr_t dma_handle;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info  mem;
 
 	prop.color_buf[0]  = 0;
@@ -2214,7 +2224,7 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms, struct device *dev)
 	int rc = 0;
 	uint32_t num_planes = 0;
 	struct virtio_kms_output *output;
-	struct plane_properties prop;
+	struct plane_properties prop = {0};
 	struct virtio_mem_info mem = { 0 };
 	int buf_len = VIRTIO_COLOR_BUF_SIZE;
 	dma_addr_t *dma_handle = NULL;
@@ -2654,6 +2664,11 @@ exit:
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)
 {
 	struct drm_crtc *crtc = kms->outputs[scanout].crtc;
+
+	if (!crtc) {
+		pr_err("virtio: crtc is NULL for scanout %d\n", scanout);
+		return;
+	}
 	msm_hyp_crtc_vblank_done(crtc);
 
 	if (kms->outputs[scanout].vblank_enabled) {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2009-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -317,6 +317,8 @@ struct sde_dbg_base {
 	bool is_dumped;
 } sde_dbg_base;
 
+static DEFINE_MUTEX(sde_dbg_init_mutex);
+static u32 sde_dbg_refcount;
 static LIST_HEAD(sde_dbg_dsi_list);
 static DEFINE_MUTEX(sde_dbg_dsi_mutex);
 
@@ -1632,6 +1634,8 @@ void sde_dbg_ctrl(const char *name, ...)
  */
 static int sde_dbg_debugfs_open(struct inode *inode, struct file *file)
 {
+	struct sde_dbg_evtlog *evtlog;
+
 	if (!inode || !file)
 		return -EINVAL;
 
@@ -1640,9 +1644,14 @@ static int sde_dbg_debugfs_open(struct inode *inode, struct file *file)
 	file->private_data = inode->i_private;
 	mutex_lock(&sde_dbg_base.mutex);
 	sde_dbg_base.cur_evt_index = 0;
-	sde_dbg_base.evtlog->first = (u32)atomic_add_return(0, &sde_dbg_base.evtlog->curr) + 1;
-	atomic_set(&sde_dbg_base.evtlog->last,
-			(sde_dbg_base.evtlog->first + SDE_EVTLOG_ENTRY));
+	evtlog = sde_dbg_base.evtlog;
+	if (!evtlog) {
+		mutex_unlock(&sde_dbg_base.mutex);
+		return -ENODEV;
+	}
+
+	evtlog->first = (u32)atomic_read(&evtlog->curr) + 1;
+	atomic_set(&evtlog->last, evtlog->first + SDE_EVTLOG_ENTRY);
 	mutex_unlock(&sde_dbg_base.mutex);
 	return 0;
 }
@@ -1694,6 +1703,11 @@ static ssize_t sde_evtlog_dump_read(struct file *file, char __user *buff,
 		return -EINVAL;
 
 	mutex_lock(&sde_dbg_base.mutex);
+	if (!sde_dbg_base.evtlog) {
+		mutex_unlock(&sde_dbg_base.mutex);
+		return -ENODEV;
+	}
+
 	len = sde_evtlog_dump_to_buffer(sde_dbg_base.evtlog,
 			evtlog_buf, SDE_EVTLOG_BUF_MAX,
 			!sde_dbg_base.cur_evt_index, true);
@@ -1722,6 +1736,9 @@ static ssize_t sde_evtlog_dump_read(struct file *file, char __user *buff,
 static ssize_t sde_evtlog_dump_write(struct file *file,
 	const char __user *user_buf, size_t count, loff_t *ppos)
 {
+	if (!sde_dbg_base.evtlog)
+		return -ENODEV;
+
 	_sde_dump_array(sde_dbg_base.panic_on_err, "dump_debugfs", false,
 			sde_dbg_base.dump_blk_mask);
 
@@ -2809,9 +2826,17 @@ void sde_dbg_init_dbg_buses(u32 hw_rev)
 
 int sde_dbg_init(struct device *dev)
 {
+	int ret;
+
 	if (!dev) {
 		pr_err("invalid params\n");
 		return -EINVAL;
+	}
+
+	mutex_lock(&sde_dbg_init_mutex);
+	if (sde_dbg_refcount++) {
+		mutex_unlock(&sde_dbg_init_mutex);
+		return 0;
 	}
 
 	mutex_init(&sde_dbg_base.mutex);
@@ -2819,14 +2844,22 @@ int sde_dbg_init(struct device *dev)
 	sde_dbg_base.dev = dev;
 
 	sde_dbg_base.evtlog = sde_evtlog_init();
-	if (IS_ERR_OR_NULL(sde_dbg_base.evtlog))
-		return PTR_ERR(sde_dbg_base.evtlog);
+	if (IS_ERR_OR_NULL(sde_dbg_base.evtlog)) {
+		ret = sde_dbg_base.evtlog ? PTR_ERR(sde_dbg_base.evtlog) :
+				-ENOMEM;
+		sde_dbg_base.evtlog = NULL;
+		goto fail_evtlog;
+	}
 
 	sde_dbg_base_evtlog = sde_dbg_base.evtlog;
 
 	sde_dbg_base.reglog = sde_reglog_init();
-	if (IS_ERR_OR_NULL(sde_dbg_base.reglog))
-		return PTR_ERR(sde_dbg_base.reglog);
+	if (IS_ERR_OR_NULL(sde_dbg_base.reglog)) {
+		ret = sde_dbg_base.reglog ? PTR_ERR(sde_dbg_base.reglog) :
+				-ENOMEM;
+		sde_dbg_base.reglog = NULL;
+		goto fail_reglog;
+	}
 
 	sde_dbg_base_reglog = sde_dbg_base.reglog;
 
@@ -2843,7 +2876,18 @@ int sde_dbg_init(struct device *dev)
 		sde_dbg_base.evtlog->enable, sde_dbg_base.panic_on_err,
 		sde_dbg_base.dump_option);
 
+	mutex_unlock(&sde_dbg_init_mutex);
 	return 0;
+
+fail_reglog:
+	sde_dbg_base_evtlog = NULL;
+	sde_evtlog_destroy(sde_dbg_base.evtlog);
+	sde_dbg_base.evtlog = NULL;
+fail_evtlog:
+	sde_dbg_refcount = 0;
+	mutex_destroy(&sde_dbg_base.mutex);
+	mutex_unlock(&sde_dbg_init_mutex);
+	return ret;
 }
 
 static void sde_dbg_reg_base_destroy(void)
@@ -2897,6 +2941,17 @@ static void sde_dbg_buses_destroy(void)
  */
 void sde_dbg_destroy(void)
 {
+	mutex_lock(&sde_dbg_init_mutex);
+	if (!sde_dbg_refcount) {
+		mutex_unlock(&sde_dbg_init_mutex);
+		return;
+	}
+
+	if (--sde_dbg_refcount) {
+		mutex_unlock(&sde_dbg_init_mutex);
+		return;
+	}
+
 	vfree(sde_dbg_base.regbuf.buf);
 	memset(&sde_dbg_base.regbuf, 0, sizeof(sde_dbg_base.regbuf));
 	_sde_dbg_debugfs_destroy();
@@ -2910,6 +2965,7 @@ void sde_dbg_destroy(void)
 	sde_dbg_dsi_ctrl_destroy();
 	sde_dbg_buses_destroy();
 	mutex_destroy(&sde_dbg_base.mutex);
+	mutex_unlock(&sde_dbg_init_mutex);
 }
 
 int sde_dbg_dsi_ctrl_register(void __iomem *base, const char *name)

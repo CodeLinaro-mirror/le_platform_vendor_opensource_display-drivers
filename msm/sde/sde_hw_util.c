@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -143,6 +143,10 @@ void msm_sde_qtimer_install(struct device *dev)
 	}
 
 	qtimer_res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "qtimer_reg");
+	if (!qtimer_res) {
+		pr_err("Failed to get qtimer_reg resource\n");
+		return;
+	}
 	qtimer_reg_size = resource_size(qtimer_res);
 	sde_kms->sde_qtimer.qtimer_cb = sde_qtimer_irq_cb;
 

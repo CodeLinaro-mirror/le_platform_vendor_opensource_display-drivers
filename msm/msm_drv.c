@@ -515,8 +515,9 @@ static int msm_drm_uninit(struct device *dev)
 	if (kms && kms->funcs)
 		kms->funcs->debugfs_destroy(kms);
 
-	sde_dbg_destroy();
 	debugfs_remove_recursive(priv->debug_root);
+	priv->debug_root = NULL;
+	sde_dbg_destroy();
 	drm_mode_config_cleanup(ddev);
 
 	if (priv->registered) {
