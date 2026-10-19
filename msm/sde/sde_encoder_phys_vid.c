@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -32,6 +32,18 @@
 /* Poll time to do recovery during active region */
 #define POLL_TIME_USEC_FOR_LN_CNT 500
 #define MAX_POLL_CNT 10
+#define SDE_FLUSH_STUCK_VSYNC_COUNT 3
+
+static bool sde_encoder_phys_vid_flush_stuck(u32 flush, u32 *vsync_count)
+{
+	if (!flush) {
+		*vsync_count = 0;
+		return false;
+	}
+
+	(*vsync_count)++;
+	return *vsync_count == SDE_FLUSH_STUCK_VSYNC_COUNT;
+}
 
 static bool sde_encoder_phys_vid_is_master(
 		struct sde_encoder_phys *phys_enc)
@@ -583,6 +595,11 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status)
 		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
 
+	if (!phys_enc->hw_intf) {
+		SDE_ERROR("invalid hw_intf\n");
+		return;
+	}
+
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
 	avr_cutoff = intf_status.is_prog_fetch_en ? 1 : 3;
 
@@ -627,13 +644,15 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	unsigned long lock_flags;
 	struct sde_hw_intf_cfg intf_cfg = { 0 };
 	bool is_split_link = false;
-	bool avr_enabled = sde_connector_get_qsync_mode(phys_enc->connector);
+	bool avr_enabled;
 
 	if (!phys_enc || !phys_enc->sde_kms || !phys_enc->hw_ctl ||
 			!phys_enc->hw_intf || !phys_enc->connector) {
 		SDE_ERROR("invalid encoder %d\n", !phys_enc);
 		return;
 	}
+
+	avr_enabled = sde_connector_get_qsync_mode(phys_enc->connector);
 
 	mode = phys_enc->cached_mode;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
@@ -905,6 +924,8 @@ static void sde_encoder_restore_state(struct sde_encoder_phys *phys_enc)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_enc = &sde_enc->base;
 	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms)
+		return;
 	ddev = sde_kms->dev;
 
 	if (!ddev || !ddev_to_msm_kms(ddev))
@@ -963,6 +984,8 @@ static void sde_encoder_store_state(struct sde_encoder_phys *phys_enc)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_enc = &sde_enc->base;
 	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms)
+		return;
 	dev = sde_kms->dev;
 
 	drm_modeset_acquire_init(&ctx, 0);
@@ -1141,20 +1164,27 @@ static enum hrtimer_restart sde_encoder_phys_vid_freq_step_callback(struct hrtim
 static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 {
 	struct sde_encoder_phys *phys_enc = arg;
+	struct sde_encoder_phys_vid *vid_enc;
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client;
 	unsigned long lock_flags;
 	u32 flush_register = ~0;
+	u32 dspp_flush_register = 0;
 	u32 reset_status = 0;
 	int new_cnt = -1, old_cnt = -1;
 	u32 event = 0;
 	int pend_ret_fence_cnt = 0;
 	u32 fence_ready = -1;
+	bool ctl_flush_stuck = false;
+	bool dspp_flush_stuck = false;
 
 	if (!phys_enc)
 		return;
+
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
@@ -1171,8 +1201,18 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 
 	old_cnt = atomic_read(&phys_enc->pending_kickoff_cnt);
 
-	if (hw_ctl->ops.get_flush_register)
+	if (hw_ctl->ops.get_flush_register) {
 		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+		ctl_flush_stuck = sde_encoder_phys_vid_flush_stuck(flush_register,
+				&vid_enc->ctl_flush_vsync_count);
+	} else {
+		vid_enc->ctl_flush_vsync_count = 0;
+	}
+	if (hw_ctl->ops.get_dspp_flush_register)
+		dspp_flush_register = hw_ctl->ops.get_dspp_flush_register(hw_ctl);
+
+	dspp_flush_stuck = sde_encoder_phys_vid_flush_stuck(dspp_flush_register,
+			&vid_enc->dspp_flush_vsync_count);
 
 	if (flush_register)
 		goto not_flushed;
@@ -1193,6 +1233,9 @@ not_flushed:
 		reset_status = hw_ctl->ops.get_reset(hw_ctl);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	if (ctl_flush_stuck || dspp_flush_stuck)
+		SDE_DBG_DUMP_WQ(0);
 
 	if (event && phys_enc->parent_ops.handle_frame_done)
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent,
@@ -1232,11 +1275,13 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys *phys_enc = arg;
 	struct sde_encoder_phys_vid *vid_enc;
 	struct drm_connector *drm_conn;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_virt *sde_enc;
 	u32 qsync_mode;
 
 	if (!phys_enc)
 		return;
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	drm_conn = sde_enc->cur_master->connector;
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
@@ -2419,11 +2464,11 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 {
 	unsigned long lock_flags;
 	struct sde_encoder_phys_vid *vid_enc;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_display_info *info = &sde_enc->disp_info;
-	struct drm_connector *drm_conn = phys_enc->connector;
-	struct sde_connector *sde_conn = to_sde_connector(drm_conn);
-	struct drm_connector_state *drm_conn_state = drm_conn->state;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
+	struct drm_connector *drm_conn;
+	struct sde_connector *sde_conn;
+	struct drm_connector_state *drm_conn_state;
 	u32 avr_mode;
 	u32 ret;
 
@@ -2431,6 +2476,12 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
+	drm_conn = phys_enc->connector;
+	sde_conn = to_sde_connector(drm_conn);
+	drm_conn_state = drm_conn->state;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	SDE_DEBUG_VIDENC(vid_enc, "enable_state %d\n", phys_enc->enable_state);

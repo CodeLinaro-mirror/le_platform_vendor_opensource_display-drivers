@@ -590,6 +590,29 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 #endif
 }
 
+static u32 sde_hw_ctl_get_dspp_flush_register(struct sde_hw_ctl *ctx)
+{
+	u32 flush = 0;
+	u32 offset;
+	int i;
+
+	if (!ctx || !(ctx->caps->features & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)))
+		return 0;
+
+	for (i = 0; i < CTL_MAX_DSPP_COUNT; i++) {
+		if (i < CTL_DSPP_5_START_IDX)
+			offset = CTL_DSPP_0_FLUSH + (i * CTL_DSPP_FLUSH_STRIDE);
+		else
+			offset = CTL_DSPP_5_FLUSH +
+				((i - CTL_DSPP_5_START_IDX) *
+				CTL_DSPP_5_FLUSH_STRIDE);
+
+		flush |= SDE_REG_READ(&ctx->hw, offset);
+	}
+
+	return flush;
+}
+
 static inline u32 sde_hw_ctl_get_flush_complete_register(struct sde_hw_ctl *ctx)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -1809,17 +1832,19 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops;
+
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command)
+	if (ops->last_command)
 		return ops->last_command(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 
@@ -1829,23 +1854,25 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 
 static int sde_hw_reg_dma_flush_vq(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops;
 	int ret;
+
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command) {
+	if (ops->last_command) {
 		ret = ops->last_command(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 		if (ret)
 			return ret;
-	} else if (ops && ops->last_command_sb) {
+	} else if (ops->last_command_sb) {
 		ret = ops->last_command_sb(ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 		if (ret)
@@ -1988,6 +2015,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
 		ops->update_bitmask_dspp_subblk =
 				sde_hw_ctl_update_bitmask_dspp_subblk;
+		ops->get_dspp_flush_register = sde_hw_ctl_get_dspp_flush_register;
 	} else {
 		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
 		ops->update_bitmask_dspp_pavlut =
@@ -2088,6 +2116,7 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
 		ops->update_bitmask_dspp_subblk =
 				sde_hw_ctl_update_bitmask_dspp_subblk;
+		ops->get_dspp_flush_register = sde_hw_ctl_get_dspp_flush_register;
 	} else {
 		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
 		ops->update_bitmask_dspp_pavlut =

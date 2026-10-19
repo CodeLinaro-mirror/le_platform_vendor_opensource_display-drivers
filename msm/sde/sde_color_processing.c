@@ -3567,6 +3567,10 @@ static int _sde_cp_ad_validate_prop(struct sde_cp_node *prop_node,
 	u32 ad_prop;
 
 	for (i = 0; i < crtc->num_mixers && !ret; i++) {
+		if (i >= MAX_MIXERS_PER_CRTC) {
+			ret = -EINVAL;
+			break;
+		}
 		if (!crtc->mixers[i].hw_dspp) {
 			ret = -EINVAL;
 			continue;
@@ -3711,7 +3715,7 @@ int sde_cp_ad_interrupt(struct drm_crtc *crtc_drm, bool en,
 		goto exit;
 	}
 
-	for (i = 0; i < num_mixers; i++) {
+	for (i = 0; i < num_mixers && i < MAX_MIXERS_PER_CRTC; i++) {
 		hw_lm = crtc->mixers[i].hw_lm;
 		hw_dspp = crtc->mixers[i].hw_dspp;
 		if (!hw_lm->cfg.right_mixer)
@@ -5381,8 +5385,10 @@ void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc)
 			sde_crtc_mdnie_art_event_notify(crtc);
 
 		for (i = 0; i < num_mixers; i++) {
+			if (i >= MAX_MIXERS_PER_CRTC || i >= DSPP_MAX)
+				goto exit;
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
-			if (!hw_dspp || i >= DSPP_MAX)
+			if (!hw_dspp)
 				goto exit;
 			else if (hw_dspp->ops.reset_mdnie_art) {
 				hw_dspp->ops.reset_mdnie_art(hw_dspp);

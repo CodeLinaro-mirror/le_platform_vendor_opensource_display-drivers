@@ -73,7 +73,7 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	struct sde_hw_ctl *hw_ctl;
 	struct intf_status intf_status = {0};
 	struct sde_cesta_scc_status scc_status = {0, };
-	struct sde_cesta_client *cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
+	struct sde_cesta_client *cesta_client =  NULL;
 	unsigned long lock_flags;
 	u32 flush_complete_register = ~0;
 	u32 reset_status = 0;
@@ -84,6 +84,8 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 
 	if (!phys_enc)
 		return;
+
+	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
@@ -662,13 +664,15 @@ static void sde_encoder_phys_hyp_handle_post_kickoff(
 		struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_hyp *hyp_enc;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_virt *sde_enc;
 	u32 avr_mode;
 
 	if (!phys_enc) {
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	hyp_enc = to_sde_encoder_phys_hyp(phys_enc);
 	SDE_DEBUG_HYPENC(hyp_enc, "enable_state %d\n", phys_enc->enable_state);

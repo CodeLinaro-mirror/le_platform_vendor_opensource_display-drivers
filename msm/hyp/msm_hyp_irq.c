@@ -741,7 +741,7 @@ struct sde_hw_intr *msm_hyp_irq_init(struct msm_hyp_kms *hyp_kms, int dpu_id)
 	SDE_DEBUG("virq_shmem %p for dpu%d\n", hyp_kms->virq_shmem[dpu_id].vaddr, dpu_id);
 
 	struct msm_hyp_irq_controller *irq = NULL;
-	struct sde_hw_intr *intr;
+	struct sde_hw_intr *intr = NULL;
 	u32 irq_regs_count = 0;
 	u32 irq_map_count = 0;
 	u32 i, j, reg_idx, irq_idx, size;
@@ -849,7 +849,7 @@ struct sde_hw_intr *msm_hyp_irq_init(struct msm_hyp_kms *hyp_kms, int dpu_id)
 	print_irq_metadata(virq_data);
 #endif
 exit:
-	if (ret) {
+	if (ret && intr) {
 		kfree(intr->sde_irq_tbl);
 		kfree(intr->sde_irq_map);
 		kfree(intr->cache_irq_mask);

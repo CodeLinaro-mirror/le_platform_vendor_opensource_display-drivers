@@ -4230,6 +4230,10 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
 
 	drm_crtc = drm_enc->crtc;
+	if (!drm_crtc) {
+		SDE_ERROR("invalid drm_crtc\n");
+		return;
+	}
 	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
@@ -4323,7 +4327,7 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_ctl *ctl = phys_enc->hw_ctl;
-	struct sde_ctl_flush_cfg cfg;
+	struct sde_ctl_flush_cfg cfg = {0};
 	struct sde_hw_dsc *hw_dsc = NULL;
 	int i;
 
@@ -4420,7 +4424,7 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_hw_ctl *ctl = phys_enc->hw_ctl;
-	struct sde_ctl_flush_cfg cfg;
+	struct sde_ctl_flush_cfg cfg = {0};
 
 	if (ctl->ops.reset)
 		ctl->ops.reset(ctl);
@@ -5679,11 +5683,11 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 {
 	struct sde_encoder_phys *phys_enc;
 	struct sde_hw_ctl *ctl;
-	struct sde_ctl_flush_cfg cfg;
+	struct sde_ctl_flush_cfg cfg = {0};
 	u32 pf_time_in_us;
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
-	struct sde_crtc *sde_crtc;
+	struct sde_crtc *sde_crtc = NULL;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -5718,7 +5722,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		} else if (!sde_crtc || sde_crtc_frame_pending(sde_enc->crtc) ||
 				sde_crtc->kickoff_in_progress ||
 				atomic_read(&phys_enc->pending_kickoff_cnt)) {
-			SDE_EVT32(sde_crtc->kickoff_in_progress,
+			SDE_EVT32(sde_crtc ? sde_crtc->kickoff_in_progress : -1,
 				atomic_read(&phys_enc->pending_kickoff_cnt), SDE_EVTLOG_FUNC_CASE3);
 			return;
 		}
@@ -5947,9 +5951,9 @@ struct msm_freq_step_pattern *sde_encoder_get_freq_pattern(struct drm_encoder *d
 
 int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_time_ns)
 {
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_mode_info *info = &sde_enc->mode_info;
-	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_mode_info *info;
+	struct sde_encoder_vrr_cfg *vrr_cfg;
 	struct msm_freq_step_pattern *curr_freq_pattern;
 	u64 interval_ns, self_refresh_in_ns, mdp_transfer_time_ns;
 	u32 qsync_min_fps = 0;
@@ -5961,6 +5965,8 @@ int sde_encoder_check_collision(struct sde_encoder_phys *phys_enc, u64 present_t
 		return 0;
 	}
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->mode_info;
 	vrr_cfg = &phys_enc->sde_vrr_cfg;
 	self_refresh_in_ns = vrr_cfg->last_image_ts_in_ns;
 	curr_freq_pattern = vrr_cfg->curr_freq_pattern;
@@ -7065,7 +7071,7 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 	struct sde_rm_hw_iter lm_iter;
 	bool lm_valid = false;
 
-	if (!phys_enc || !phys_enc->parent) {
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_ctl) {
 		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
 	}
