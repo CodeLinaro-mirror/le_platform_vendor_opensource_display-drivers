@@ -493,6 +493,12 @@ struct sde_hw_ctl_ops {
 			enum sde_dspp dspp, u32 sub_blk, bool enable);
 
 	/**
+	 * get_dspp_flush_register - return pending unified DSPP flush bits
+	 * @ctx: ctl path ctx pointer
+	 */
+	u32 (*get_dspp_flush_register)(struct sde_hw_ctl *ctx);
+
+	/**
 	 * update_bitmask_sspp: updates mask corresponding to sspp
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable

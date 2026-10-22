@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt)	"[drm:virtio-kms:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sort.h>
+#include <linux/log2.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
 //#include <soc/qcom/boot_stats.h>
@@ -522,7 +523,7 @@ void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
 	struct sde_connector *sde_conn)
 {
 	uint32_t panel_colorspace;
-	bool hdr_support;
+	bool hdr_support = false;
 
 	panel_colorspace = priv->base.panel_colorspace;
 
@@ -709,10 +710,10 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	struct msm_resource_caps_info avail_dp_res;
 	struct msm_display_info *info;
 	int rc = 0;
-	struct msm_hyp_kms *hyp_kms = hyp_display->sde_kms->hyp_kms;
-	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
-	struct virtio_connector_info_priv *conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
-	struct virtio_kms_output *output = &kms->outputs[conn_priv->scanout];
+	struct msm_hyp_kms *hyp_kms;
+	struct virtio_kms *kms;
+	struct virtio_connector_info_priv *conn_priv;
+	struct virtio_kms_output *output;
 	u32 num_dsc = 0;
 
 	if (!drm_mode || !mode_info || !avail_res ||
@@ -721,6 +722,11 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 		VIRTIO_KMS_ERR("invalid params\n");
 		return -EINVAL;
 	}
+
+	hyp_kms = hyp_display->sde_kms->hyp_kms;
+	kms = to_virtio_kms(hyp_kms);
+	conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
+	output = &kms->outputs[conn_priv->scanout];
 
 	memset(mode_info, 0, sizeof(*mode_info));
 
@@ -753,11 +759,30 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 			VIRTIO_KMS_ERR("error getting dsc count. rc:%d\n", rc);
 			return rc;
 		}
+
+		/*
+		 * Round up to the nearest supported LM/DSC count (1, 2, 4).
+		 * Width-based DSC calculation can yield unsupported values
+		 * SDE only supports topologies with 1, 2, or 4 LMs —
+		 * round up to the next power of 2 to pick a valid topology.
+		 */
+		if (num_dsc > 0)
+			num_dsc = roundup_pow_of_two(num_dsc);
+
 		if (num_dsc > avail_dp_res.num_dsc) {
-			VIRTIO_KMS_ERR("exceed dsc count %d > %d\n", num_dsc, avail_dp_res.num_dsc);
+			VIRTIO_KMS_ERR("insufficient DSC blocks: need %d avail %d hdisplay=%d\n",
+					num_dsc, avail_dp_res.num_dsc, drm_mode->hdisplay);
 			return -EINVAL;
 		}
+
 		topology->num_lm = max(topology->num_lm, num_dsc);
+
+		if (topology->num_lm > avail_dp_res.num_lm) {
+			VIRTIO_KMS_ERR("insufficient LM blocks: need %d avail %d hdisplay=%d\n",
+					topology->num_lm, avail_dp_res.num_lm, drm_mode->hdisplay);
+			return -EINVAL;
+		}
+
 		topology->num_enc = num_dsc;
 	}
 	/* reset connector lm_mask for every connection event and
@@ -953,9 +978,14 @@ int virtio_connector_get_qsync_min_fps(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
 
-	if (!sde_conn_state || !sde_conn_state->mode_info.qsync_min_fps) {
-		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, qsync_min_fps: %d",
-			sde_conn_state, sde_conn_state->mode_info.qsync_min_fps);
+	if (!sde_conn_state) {
+		VIRTIO_KMS_ERR("Invalid conn_state: NULL");
+		return -EINVAL;
+	}
+
+	if (!sde_conn_state->mode_info.qsync_min_fps) {
+		VIRTIO_KMS_ERR("Invalid qsync_min_fps: %d",
+			sde_conn_state->mode_info.qsync_min_fps);
 		return -EINVAL;
 	}
 
@@ -966,9 +996,14 @@ int virtio_connector_get_avr_step_fps(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
 
-	if (!sde_conn_state || !sde_conn_state->mode_info.avr_step_fps) {
-		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, avr_step_fps: %d",
-			sde_conn_state, sde_conn_state->mode_info.avr_step_fps);
+	if (!sde_conn_state) {
+		VIRTIO_KMS_ERR("Invalid conn_state: NULL");
+		return -EINVAL;
+	}
+
+	if (!sde_conn_state->mode_info.avr_step_fps) {
+		VIRTIO_KMS_ERR("Invalid avr_step_fps: %d",
+			sde_conn_state->mode_info.avr_step_fps);
 		return -EINVAL;
 	}
 
@@ -1857,7 +1892,7 @@ static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
 	int i, k;
 	bool rec_only;
 
-	if (!avail_pipes)
+	if (!avail_pipes || disp_idx >= MAX_DISPLAYNODES)
 		return;
 
 	for (i = 0; i < SSPP_MAX; i++) {
@@ -1866,7 +1901,7 @@ static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
 
 		/* Skip REC-only pipes — they use SSPP-level active registers */
 		rec_only = false;
-		for (k = 0; k < output->plane_cnt; k++) {
+		for (k = 0; k < output->plane_cnt && k < VIRTIO_GPU_MAX_PLANES; k++) {
 			if (output->plane_caps[k].sspp_id != i)
 				continue;
 			if (output->plane_caps[k].rect_mask == 0x1 ||
@@ -1892,7 +1927,7 @@ static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 
 	VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
 
-	for (k = 0; k < output->plane_cnt; k++) {
+	for (k = 0; k < output->plane_cnt && k < VIRTIO_GPU_MAX_PLANES; k++) {
 		for (j = 0; j < sde_cfg->sspp_count; j++) {
 			if (output->plane_caps[k].sspp_id != sde_cfg->sspp[j].id)
 				continue;
@@ -3243,6 +3278,9 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	int rc = 0;
 	uint32_t scanout;
 
+	kms->has_edid = true;
+	VIRTIO_KMS_INFO("EDID support available.\n");
+
 //	if (virtio_has_feature(kms->vdev, VIRTIO_GPU_F_EDID)) {
 //		kms->has_edid = true;
 //		DRM_INFO("EDID support available.\n");
@@ -3315,11 +3353,12 @@ static int _virtio_kms_parse_client_hab_id(struct device_node *node, uint32_t *c
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
 	int ret = 0;
-	uint32_t client_id = kms->client_id;
+	uint32_t client_id;
 	if (!kms) {
 		VIRTIO_KMS_ERR("kms NULL\n");
 		return -EINVAL;
 	}
+	client_id = kms->client_id;
 
 	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
 	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);

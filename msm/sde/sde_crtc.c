@@ -2120,6 +2120,10 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 				(cac_mode == SDE_CAC_LOOPBACK_FETCH))
 			layout_idx = cur_sde_pstate->layout;
 
+		if (layout_idx >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("layout_idx %d out of bounds\n", layout_idx);
+			layout_idx = 0;
+		}
 		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
 		stage = cur_sde_pstate->stage;
 
@@ -2235,7 +2239,7 @@ static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 	int zpos_cnt[MAX_LAYOUTS_PER_CRTC][SDE_STAGE_MAX + 1];
 	int mode = 0;
 	bool bg_alpha_enable = false;
-	u32 blend_type, cac_mode;
+	u32 blend_type, cac_mode = 0;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
 
 	memset(zpos_cnt, 0, sizeof(zpos_cnt));
@@ -2331,6 +2335,10 @@ static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 					cac_mode == SDE_CAC_LOOPBACK_UNPACK)
 				layout_idx = pstate->layout;
 
+			if (layout_idx >= MAX_LAYOUTS_PER_CRTC) {
+				SDE_ERROR("layout_idx %d out of bounds\n", layout_idx);
+				layout_idx = 0;
+			}
 			stage_cfg = &sde_crtc->stage_cfg[layout_idx];
 			stage_idx = zpos_cnt[layout_idx][pstate->stage]++;
 			stage_cfg->stage[pstate->stage][stage_idx] =
@@ -2481,6 +2489,10 @@ static void _sde_crtc_blend_setup_local(struct drm_crtc *crtc,
 		if (sde_crtc_state->is_loopback_mode)
 			lm_layout = (lm->idx - LM_0) / MAX_MIXERS_PER_LAYOUT;
 
+		if (lm_layout >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("lm_layout greaterthan equal to MAX_LAYOUTS_PER_CRTC");
+			continue;
+		}
 		if (sde_kms_rect_is_null(lm_roi)) {
 			SDE_DEBUG(
 				"%s: lm%d leave ctl%d mask 0 since null roi\n",
@@ -2658,6 +2670,11 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 		if (sde_crtc_state->is_loopback_mode)
 			lm_layout = (lm->idx - LM_0) / MAX_MIXERS_PER_LAYOUT;
 
+		if (lm_layout >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("lm_layout value is greaterthan equal to %d",
+				MAX_LAYOUTS_PER_CRTC);
+			continue;
+		}
 		if (sde_kms_rect_is_null(lm_roi))
 			sde_crtc->mixers[i].mixer_op_mode = 0;
 
@@ -4746,21 +4763,31 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	input_hw_fences_enable = (ipcc_input_signal_wait && !_is_vid_power_on_frame(crtc));
 
 	/* wait for sw fences and get hw fences list (if any) */
-	num_hw_fences = _sde_crtc_fences_wait_list(crtc, input_hw_fences_enable, &dma_hw_fences[0],
-		MAX_HW_FENCES);
+	num_hw_fences = _sde_crtc_fences_wait_list(crtc, input_hw_fences_enable,
+		&dma_hw_fences[0], MAX_HW_FENCES);
 
 	/* register the hw-fences for hw-wait */
 	if (num_hw_fences > 0 && num_hw_fences <= MAX_HW_FENCES) {
 
-		ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences, num_hw_fences);
-		if (ret) {
-			SDE_ERROR("failed to register for hw-fence wait, will wait in sw\n");
-			SDE_EVT32(SDE_EVTLOG_ERROR, num_hw_fences,
-				hw_ctl ? hw_ctl->idx - CTL_0 : -1);
+		if (!hw_ctl) {
+			SDE_ERROR("invalid hw_ctl for hw-fence wait\n");
+			num_hw_fences = 0;
+		} else {
+			ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences,
+				num_hw_fences);
+			if (ret) {
+				SDE_ERROR(
+					"failed to register for hw-fence wait, will wait in sw\n");
+				SDE_EVT32(SDE_EVTLOG_ERROR, num_hw_fences,
+					hw_ctl->idx - CTL_0);
 
-			/* we failed to register hw-fences, wait for all fences as 'sw-fences' */
-			num_hw_fences = _sde_crtc_fences_wait_list(crtc, false, &dma_hw_fences[0],
-				MAX_HW_FENCES);
+				/*
+				 * we failed to register hw-fences,
+				 * wait for all fences as 'sw-fences'
+				 */
+				num_hw_fences = _sde_crtc_fences_wait_list(crtc, false,
+					&dma_hw_fences[0], MAX_HW_FENCES);
+			}
 		}
 	}
 
@@ -4774,7 +4801,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 
 	/* if hw is waiting for ipcc signal and no hw-fences, override signal */
 	trigger_sw_override |= (ipcc_input_signal_wait && !num_hw_fences &&
-			hw_ctl->ops.hw_fence_trigger_sw_override &&
+			hw_ctl && hw_ctl->ops.hw_fence_trigger_sw_override &&
 			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask));
 
 	if (trigger_sw_override)
@@ -4929,7 +4956,7 @@ static void _sde_crtc_setup_lm_bounds(struct drm_crtc *crtc, struct drm_crtc_sta
 		mixer = &sde_crtc->mixers[i];
 		mixer_id = mixer->hw_lm->idx - LM_0;
 
-		if (cstate->is_loopback_mode) {
+		if (cstate->is_loopback_mode && mixer_id < MAX_MIXERS_PER_CRTC) {
 			lb_mixer_width = cstate->cac_mixer_roi[mixer_id].src_w;
 			lb_mixer_height = cstate->cac_mixer_roi[mixer_id].src_h;
 			mixer_prev_x = (i > 0) ? cstate->lm_bounds[i - 1].x : 0;

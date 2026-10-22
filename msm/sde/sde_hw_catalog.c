@@ -3024,7 +3024,7 @@ static int _sde_ltm_parse_dt(struct device_node *np,
 		sde_cfg->ltm_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3071,7 +3071,7 @@ static int _sde_dspp_demura_parse_dt(struct device_node *np,
 		sde_cfg->demura_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3111,7 +3111,7 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 		sde_cfg->spr_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3160,7 +3160,7 @@ static int _sde_rc_parse_dt(struct device_node *np,
 		sde_cfg->rc_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3249,7 +3249,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3282,7 +3282,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_DITHER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3305,7 +3305,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_WRAPPER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3354,7 +3354,7 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 				off_count, sde_cfg->dspp_count);
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
