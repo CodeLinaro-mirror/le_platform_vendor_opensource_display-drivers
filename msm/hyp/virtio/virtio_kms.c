@@ -2527,7 +2527,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	scanout_index = 0;
 
 	/* Re-link all HW blocks assigned to GVM */
-	for (i = 0; i < kms->num_scanouts; i++) {
+	for (i = 0; i < kms->num_scanouts && i < MAX_DISPLAYNODES; i++) {
 		output = &kms->outputs[i];
 		VIRTIO_KMS_DBG("scanout %d dpu %d ctl %d\n", output->index,
 				output->hw_assign.dpu_id, output->hw_assign.ctl_id);
